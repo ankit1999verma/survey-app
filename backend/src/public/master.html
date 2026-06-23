@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Master Data - GP Survey Admin</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <h1>GP Survey Admin</h1>
+    <div class="nav-links">
+      <a href="index.html">Dashboard</a>
+      <a href="master.html">Master Data</a>
+      <a href="users.html">Surveyors</a>
+    </div>
+  </nav>
+
+  <div class="container grid">
+    <!-- State -->
+    <div class="card">
+      <div class="card-header">
+        <h2>States</h2>
+      </div>
+      <form id="stateForm" class="form-group">
+        <input type="text" id="stateName" class="form-control" placeholder="State Name" required style="margin-bottom:0.5rem">
+        <input type="text" id="stateCode" class="form-control" placeholder="State Code (Optional)" style="margin-bottom:0.5rem">
+        <button type="submit" class="btn btn-primary">Add State</button>
+      </form>
+      <ul id="stateList"></ul>
+    </div>
+
+    <!-- District -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Districts</h2>
+      </div>
+      <form id="districtForm" class="form-group">
+        <select id="districtStateSelect" class="form-control" required style="margin-bottom:0.5rem">
+          <option value="">Select State...</option>
+        </select>
+        <input type="text" id="districtName" class="form-control" placeholder="District Name" required style="margin-bottom:0.5rem">
+        <button type="submit" class="btn btn-primary">Add District</button>
+      </form>
+      <ul id="districtList"></ul>
+    </div>
+
+    <!-- Block -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Blocks</h2>
+      </div>
+      <form id="blockForm" class="form-group">
+        <select id="blockDistrictSelect" class="form-control" required style="margin-bottom:0.5rem">
+          <option value="">Select District...</option>
+        </select>
+        <input type="text" id="blockName" class="form-control" placeholder="Block Name" required style="margin-bottom:0.5rem">
+        <button type="submit" class="btn btn-primary">Add Block</button>
+      </form>
+      <ul id="blockList"></ul>
+    </div>
+
+    <!-- GP -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Gram Panchayats</h2>
+      </div>
+      <form id="gpForm" class="form-group">
+        <select id="gpBlockSelect" class="form-control" required style="margin-bottom:0.5rem">
+          <option value="">Select Block...</option>
+        </select>
+        <input type="text" id="gpName" class="form-control" placeholder="GP Name" required style="margin-bottom:0.5rem">
+        <button type="submit" class="btn btn-primary">Add GP</button>
+      </form>
+      <ul id="gpList"></ul>
+    </div>
+  </div>
+
+  <script src="js/admin.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      initMasterData();
+    });
+  </script>
+</body>
+</html>

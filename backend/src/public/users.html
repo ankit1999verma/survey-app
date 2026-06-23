@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Surveyors - GP Survey Admin</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <h1>GP Survey Admin</h1>
+    <div class="nav-links">
+      <a href="index.html">Dashboard</a>
+      <a href="master.html">Master Data</a>
+      <a href="users.html">Surveyors</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="card">
+      <div class="card-header">
+        <h2>Provision New Surveyor</h2>
+      </div>
+      <form id="userForm" class="form-group" style="max-width: 400px;">
+        <input type="text" id="userName" class="form-control" placeholder="Full Name" required style="margin-bottom:0.5rem">
+        <input type="text" id="userUsername" class="form-control" placeholder="Username" required style="margin-bottom:0.5rem">
+        <input type="password" id="userPassword" class="form-control" placeholder="Password" required style="margin-bottom:0.5rem">
+        <input type="text" id="userContact" class="form-control" placeholder="Contact No (Optional)" style="margin-bottom:0.5rem">
+        <button type="submit" class="btn btn-primary">Create User</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>Surveyor List</h2>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Username</th>
+            <th>Role</th>
+            <th>Contact</th>
+            <th>Created Date</th>
+          </tr>
+        </thead>
+        <tbody id="userTableBody">
+          <tr><td colspan="5">Loading users...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="js/admin.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      fetchUsers();
+    });
+  </script>
+</body>
+</html>

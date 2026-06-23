@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "GP Survey Pro",
+    "slug": "mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Camera is used to capture survey site photographs.",
+        "NSPhotoLibraryUsageDescription": "Photo library access is used to upload site images for surveys.",
+        "NSLocationWhenInUseUsageDescription": "Location is used to record GPS coordinates of the survey site."
+      },
+      "bundleIdentifier": "com.ankitverma.gpsurveypro"
+    },
+    "android": {
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow GP Survey to access your photos for site documentation.",
+          "cameraPermission": "Allow GP Survey to use the camera to capture site photographs."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow GP Survey to access location for GPS coordinate capture."
+        }
+      ]
+    ]
+  }
+}

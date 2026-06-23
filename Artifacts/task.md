@@ -1,0 +1,10 @@
+- [/] Backend setup and packages
+- [ ] Database config, models, and migrations
+- [ ] Seeding script for Haryana districts, blocks, and sample GPs
+- [ ] REST APIs for login, survey submission, dynamic master additions, and survey list
+- [ ] Admin Portal web pages (index, master, users) with styling and admin.js logic
+- [ ] Mobile React Native application setup and mock environment
+- [ ] Offline Sync Manager (syncManager.js) implementation
+- [ ] Survey Form Screen and dynamic selectors (SurveyFormScreen.js)
+- [ ] Login screen and AuthContext
+- [ ] Testing and verification

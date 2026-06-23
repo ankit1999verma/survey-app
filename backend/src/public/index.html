@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GP Survey - Admin Dashboard</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <h1>GP Survey Admin</h1>
+    <div class="nav-links">
+      <a href="index.html">Dashboard</a>
+      <a href="master.html">Master Data</a>
+      <a href="users.html">Surveyors</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="card">
+      <div class="card-header">
+        <h2>Recent Surveys</h2>
+        <a href="/api/survey/export" class="btn btn-success" target="_blank">Export to Excel</a>
+      </div>
+      <div style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Surveyor</th>
+              <th>Respondent Name</th>
+              <th>Location</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody id="surveyTableBody">
+            <tr><td colspan="5">Loading surveys...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/admin.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      fetchSurveys();
+    });
+  </script>
+</body>
+</html>
