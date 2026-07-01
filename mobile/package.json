@@ -4,6 +4,7 @@
   "main": "index.js",
   "dependencies": {
     "@expo-google-fonts/hanken-grotesk": "^0.4.3",
+    "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-picker/picker": "2.11.4",
     "@react-navigation/native": "^7.3.3",
@@ -14,13 +15,17 @@
     "expo-font": "^56.0.7",
     "expo-image-picker": "~56.0.18",
     "expo-location": "~56.0.18",
+    "expo-sharing": "~56.0.19",
+    "expo-sqlite": "~56.0.5",
     "expo-status-bar": "~56.0.4",
     "react": "19.2.3",
+    "react-dom": "19.2.3",
     "react-native": "0.85.3",
     "react-native-dropdown-picker": "^5.4.6",
     "react-native-get-random-values": "~1.11.0",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "^4.25.2",
+    "react-native-web": "^0.21.2",
     "uuid": "^14.0.1"
   },
   "scripts": {

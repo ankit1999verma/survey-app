@@ -6,7 +6,7 @@ const { State, District, Block, GramPanchayat } = require('../models');
 router.get('/states', async (req, res) => {
   try {
     const states = await State.findAll({ order: [['name', 'ASC']] });
-    res.json(states);
+    res.json({ total: states.length, data: states });
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -29,7 +29,7 @@ router.get('/districts', async (req, res) => {
     const { stateId } = req.query;
     const where = stateId ? { stateId } : {};
     const districts = await District.findAll({ where, order: [['name', 'ASC']], include: [State] });
-    res.json(districts);
+    res.json({ total: districts.length, data: districts });
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -49,10 +49,11 @@ router.post('/districts', async (req, res) => {
 // ==== BLOCKS ====
 router.get('/blocks', async (req, res) => {
   try {
-    const { districtId } = req.query;
+    const { districtId, page = 1, limit = 50 } = req.query;
     const where = districtId ? { districtId } : {};
-    const blocks = await Block.findAll({ where, order: [['name', 'ASC']], include: [District] });
-    res.json(blocks);
+    const offset = (page - 1) * limit;
+    const { count, rows } = await Block.findAndCountAll({ where, order: [['name', 'ASC']], include: [District], limit: parseInt(limit), offset: parseInt(offset) });
+    res.json({ total: count, data: rows });
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -72,10 +73,11 @@ router.post('/blocks', async (req, res) => {
 // ==== GRAM PANCHAYATS ====
 router.get('/grampanchayats', async (req, res) => {
   try {
-    const { blockId } = req.query;
+    const { blockId, page = 1, limit = 50 } = req.query;
     const where = blockId ? { blockId } : {};
-    const gps = await GramPanchayat.findAll({ where, order: [['name', 'ASC']], include: [Block] });
-    res.json(gps);
+    const offset = (page - 1) * limit;
+    const { count, rows } = await GramPanchayat.findAndCountAll({ where, order: [['name', 'ASC']], include: [Block], limit: parseInt(limit), offset: parseInt(offset) });
+    res.json({ total: count, data: rows });
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }

@@ -1,226 +1,242 @@
 import React, { useState, useContext } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Alert, StatusBar, Platform
+  ActivityIndicator, StatusBar, Platform, KeyboardAvoidingView, ScrollView
 } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
+import { useAlert } from '../context/AlertContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, spacing, radius, typography } from '../theme';
+import { Feather } from '@expo/vector-icons';
+import { colors, spacing, radius, typography, shadows } from '../theme';
 
 const LoginScreen = () => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState(__DEV__ ? 'admin' : '');
+  const [password, setPassword] = useState(__DEV__ ? 'admin123' : '');
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [focusedField, setFocusedField] = useState(null);
   const { login, isLoading } = useContext(AuthContext);
+  const { showAlert: alert } = useAlert();
 
   const handleLogin = async () => {
     if (!username || !password) {
-      Alert.alert('Missing Fields', 'Please enter your username and password.');
+      alert('Missing Fields', 'Please enter your username and password.');
       return;
     }
     try {
       await login(username, password);
     } catch (error) {
-      Alert.alert('Access Denied', 'Invalid credentials. Please try again.');
+      alert('Access Denied', 'Invalid credentials. Please try again.');
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surfaceContainerLow} />
 
-      {/* App Header Bar */}
-      <View style={styles.headerBar}>
-        <View style={styles.headerLeft}>
-          <View style={styles.signalIcon}>
-            <View style={[styles.bar, { height: 6 }]} />
-            <View style={[styles.bar, { height: 10 }]} />
-            <View style={[styles.bar, { height: 14 }]} />
-            <View style={[styles.bar, { height: 18 }]} />
-          </View>
-          <Text style={styles.appName}>GP Survey Pro</Text>
-        </View>
-        <Text style={styles.syncIcon}>⇄</Text>
-      </View>
-      <View style={styles.headerUnderline} />
-
-      {/* Main Content */}
-      <View style={styles.content}>
-        {/* Login Card */}
-        <View style={styles.card}>
-          {/* Lock Icon */}
-          <View style={styles.iconContainer}>
-            <Text style={styles.lockIcon}>🔒</Text>
+      <KeyboardAvoidingView 
+        style={styles.keyboardView} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? -20 : 0}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          bounces={false}
+          showsVerticalScrollIndicator={false}
+        >
+          
+          {/* Logo / Title Area */}
+          <View style={styles.brandContainer}>
+            <View style={styles.logoBox}>
+              <Feather name="radio" size={36} color={colors.primary} />
+            </View>
+            <Text style={styles.appName}>BSNL GP Survey</Text>
+            <Text style={styles.appSubtitle}>Secure Field Portal</Text>
           </View>
 
-          <Text style={styles.cardTitle}>Secure Access</Text>
-          <Text style={styles.cardSubtitle}>
-            Authorized field personnel login for data synchronization and reporting.
-          </Text>
+          {/* Login Card */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Sign In</Text>
+            <Text style={styles.cardSubtitle}>
+              Authorized personnel login for survey data synchronization.
+            </Text>
 
-          {/* Username */}
-          <Text style={styles.fieldLabel}>USERNAME</Text>
-          <View style={[styles.inputWrapper, focusedField === 'username' && styles.inputFocused]}>
-            <Text style={styles.inputIcon}>👤</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Field ID or Username"
-              value={username}
-              onChangeText={setUsername}
-              autoCapitalize="none"
-              placeholderTextColor={colors.placeholder}
-              onFocus={() => setFocusedField('username')}
-              onBlur={() => setFocusedField(null)}
-            />
-          </View>
+            {/* Username */}
+            <Text style={styles.fieldLabel}>FIELD ID</Text>
+            <View style={[styles.inputWrapper, focusedField === 'username' && styles.inputFocused]}>
+              <Feather name="user" size={20} color={focusedField === 'username' ? colors.primary : colors.outline} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your field ID"
+                value={username}
+                onChangeText={setUsername}
+                autoCapitalize="none"
+                placeholderTextColor={colors.placeholder}
+                onFocus={() => setFocusedField('username')}
+                onBlur={() => setFocusedField(null)}
+              />
+            </View>
 
-          {/* Password */}
-          <Text style={styles.fieldLabel}>PASSWORD</Text>
-          <View style={[styles.inputWrapper, focusedField === 'password' && styles.inputFocused]}>
-            <Text style={styles.inputIcon}>🔑</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="••••••••"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!passwordVisible}
-              placeholderTextColor={colors.placeholder}
-              onFocus={() => setFocusedField('password')}
-              onBlur={() => setFocusedField(null)}
-            />
-            <TouchableOpacity onPress={() => setPasswordVisible(!passwordVisible)} style={styles.eyeBtn}>
-              <Text style={styles.eyeIcon}>{passwordVisible ? '🙈' : '👁️'}</Text>
+            {/* Password */}
+            <Text style={styles.fieldLabel}>PASSWORD</Text>
+            <View style={[styles.inputWrapper, focusedField === 'password' && styles.inputFocused]}>
+              <Feather name="lock" size={20} color={focusedField === 'password' ? colors.primary : colors.outline} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="••••••••"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!passwordVisible}
+                placeholderTextColor={colors.placeholder}
+                onFocus={() => setFocusedField('password')}
+                onBlur={() => setFocusedField(null)}
+              />
+              <TouchableOpacity onPress={() => setPasswordVisible(!passwordVisible)} style={styles.eyeBtn}>
+                <Feather name={passwordVisible ? "eye-off" : "eye"} size={20} color={colors.outline} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Login Button */}
+            <TouchableOpacity
+              style={[styles.loginBtn, isLoading && styles.loginBtnDisabled]}
+              onPress={handleLogin}
+              disabled={isLoading}
+              activeOpacity={0.85}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.loginBtnText}>Login</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.forgotBtn}>
+              <Text style={styles.forgotText}>Forgot credentials?</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Login Button */}
-          <TouchableOpacity
-            style={[styles.loginBtn, isLoading && styles.loginBtnDisabled]}
-            onPress={handleLogin}
-            disabled={isLoading}
-            activeOpacity={0.85}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.loginBtnText}>Login →</Text>
-            )}
-          </TouchableOpacity>
+          {/* Session Info */}
+          <View style={styles.sessionBanner}>
+            <Feather name="info" size={16} color={colors.onSurfaceVariant} style={styles.sessionIcon} />
+            <Text style={styles.sessionText}>Your session will persist until manual logout.</Text>
+          </View>
 
-          <TouchableOpacity>
-            <Text style={styles.forgotText}>Forgot access credentials?</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Session Info */}
-        <View style={styles.sessionBanner}>
-          <Text style={styles.sessionIcon}>ℹ️</Text>
-          <Text style={styles.sessionText}>Your session will persist until manual logout.</Text>
-        </View>
-      </View>
-
-      {/* Version footer */}
-      <Text style={styles.versionText}>V1.0.0-STABLE  •  SECURE MODE</Text>
+          {/* Version footer */}
+          <Text style={styles.versionText}>V1.0.0-STABLE  •  SECURE MODE</Text>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surface },
+  container: { flex: 1, backgroundColor: colors.surfaceContainerLow },
+  keyboardView: { flex: 1 },
+  scrollContent: { flexGrow: 1, paddingHorizontal: spacing.lg, justifyContent: 'center' },
 
-  // Header bar
-  headerBar: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: spacing.md, paddingVertical: 12,
+  // Brand
+  brandContainer: {
+    alignItems: 'center',
+    marginBottom: spacing.xxl,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  signalIcon: { flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
-  bar: { width: 4, backgroundColor: colors.primary, borderRadius: 1 },
-  appName: { fontSize: 18, fontWeight: '700', color: colors.primary, letterSpacing: -0.3 },
-  syncIcon: { fontSize: 20, color: colors.onSurface },
-  headerUnderline: { height: 2, backgroundColor: colors.primary },
-
-  content: { flex: 1, paddingHorizontal: spacing.md, paddingTop: spacing.xl, justifyContent: 'center' },
+  logoBox: {
+    width: 72, height: 72,
+    backgroundColor: colors.white,
+    borderRadius: 20,
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: spacing.md,
+    ...shadows.md,
+  },
+  appName: {
+    ...typography.headlineMd,
+    fontWeight: '800',
+    color: colors.primary,
+    letterSpacing: -0.5,
+  },
+  appSubtitle: {
+    ...typography.labelLg,
+    color: colors.onSurfaceVariant,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: 4,
+  },
 
   // Card
   card: {
     backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.outlineVariant,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
+    borderRadius: 24,
+    padding: spacing.xl,
+    marginBottom: spacing.xl,
+    ...shadows.lg,
   },
-  iconContainer: {
-    width: 64, height: 64, borderRadius: radius.lg,
-    backgroundColor: colors.surfaceContainer,
-    justifyContent: 'center', alignItems: 'center',
-    alignSelf: 'center', marginBottom: spacing.md,
-  },
-  lockIcon: { fontSize: 28 },
   cardTitle: {
-    ...typography.headlineMd, color: colors.onSurface,
-    textAlign: 'center', marginBottom: 8,
+    ...typography.headlineSm, color: colors.onSurface,
+    fontWeight: '700', marginBottom: 8,
   },
   cardSubtitle: {
-    ...typography.bodyMd, color: colors.muted,
-    textAlign: 'center', marginBottom: spacing.lg,
+    ...typography.bodyMd, color: colors.onSurfaceVariant,
+    marginBottom: spacing.xl,
     lineHeight: 22,
   },
 
   // Fields
   fieldLabel: {
     ...typography.labelSm, color: colors.onSurfaceVariant,
-    letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 6,
+    letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8,
+    fontWeight: '700',
   },
   inputWrapper: {
     flexDirection: 'row', alignItems: 'center',
-    height: 56, borderWidth: 1, borderColor: colors.outlineVariant,
-    borderRadius: radius.md, backgroundColor: colors.white,
-    paddingHorizontal: spacing.md, marginBottom: spacing.md,
+    height: 56, borderWidth: 1.5, borderColor: colors.outlineVariant,
+    borderRadius: radius.lg, backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md, marginBottom: spacing.lg,
   },
-  inputFocused: { borderWidth: 2, borderColor: colors.primary, backgroundColor: colors.surfaceContainerLow },
-  inputIcon: { fontSize: 16, marginRight: 10 },
-  input: { flex: 1, fontSize: 16, color: colors.onSurface },
-  eyeBtn: { padding: 4 },
-  eyeIcon: { fontSize: 16 },
+  inputFocused: { 
+    borderColor: colors.primary, 
+    backgroundColor: colors.white,
+    ...shadows.sm
+  },
+  inputIcon: { marginRight: 12 },
+  input: { 
+    flex: 1, 
+    padding: 0, 
+    ...typography.bodyLg, 
+    color: colors.onSurface 
+  },
+  eyeBtn: { padding: 8, marginRight: -4 },
 
   // Buttons
   loginBtn: {
     height: 56, backgroundColor: colors.primary,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     justifyContent: 'center', alignItems: 'center',
-    marginBottom: spacing.md, marginTop: 4,
+    marginBottom: spacing.lg, marginTop: spacing.sm,
+    ...shadows.md,
   },
   loginBtnDisabled: { opacity: 0.7 },
-  loginBtnText: { color: colors.white, fontSize: 18, fontWeight: '700', letterSpacing: 0.5 },
+  loginBtnText: { color: colors.white, ...typography.titleMd, fontWeight: '700' },
+  forgotBtn: { alignSelf: 'center', paddingVertical: 8 },
   forgotText: {
-    ...typography.labelMd, color: colors.primary,
-    textAlign: 'center', textDecorationLine: 'underline',
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    ...typography.labelLg, color: colors.primary,
+    fontWeight: '600',
   },
 
   // Session banner
   sessionBanner: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: colors.surfaceContainerLow,
-    borderRadius: radius.lg, padding: spacing.md, gap: 8,
+    backgroundColor: 'rgba(37, 99, 235, 0.08)',
+    borderRadius: radius.lg, padding: spacing.md, gap: 12,
+    marginBottom: spacing.xl,
   },
-  sessionIcon: { fontSize: 14 },
   sessionText: {
-    fontSize: 13, color: colors.onSurfaceVariant,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    flex: 1,
+    ...typography.labelMd, color: colors.primary,
+    flex: 1, lineHeight: 20,
   },
 
   // Version
   versionText: {
-    textAlign: 'center', paddingVertical: spacing.md,
-    fontSize: 11, color: colors.outline, letterSpacing: 1.5,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    textAlign: 'center', 
+    ...typography.labelSm, color: colors.outline, letterSpacing: 1.5,
   },
 });
 

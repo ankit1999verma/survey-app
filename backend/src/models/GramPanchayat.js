@@ -26,6 +26,9 @@ const GramPanchayat = sequelize.define('GramPanchayat', {
   },
 }, {
   timestamps: true,
+  indexes: [
+    { fields: ['blockId'] }
+  ]
 });
 
 Block.hasMany(GramPanchayat, { foreignKey: 'blockId', onDelete: 'CASCADE' });

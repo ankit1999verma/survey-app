@@ -26,6 +26,9 @@ const Block = sequelize.define('Block', {
   },
 }, {
   timestamps: true,
+  indexes: [
+    { fields: ['districtId'] }
+  ]
 });
 
 District.hasMany(Block, { foreignKey: 'districtId', onDelete: 'CASCADE' });

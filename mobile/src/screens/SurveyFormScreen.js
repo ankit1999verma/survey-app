@@ -1,25 +1,38 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback, useMemo } from 'react';
 import {
   View, Text, TextInput, StyleSheet, TouchableOpacity,
-  ScrollView, Alert, StatusBar, Platform, ActivityIndicator, Image, ActionSheetIOS
+  ScrollView, Alert, StatusBar, Platform, ActivityIndicator, Modal,
+  LayoutAnimation, UIManager, Image, KeyboardAvoidingView
 } from 'react-native';
-import WheelPickerField from '../components/WheelPickerField';
-import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import * as FileSystem from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
 import { AuthContext } from '../context/AuthContext';
+import { useAlert } from '../context/AlertContext';
+import WheelPickerField from '../components/WheelPickerField';
+import api from '../utils/api';
 import { saveSurveyOffline, getMasterData, syncMasterData } from '../utils/syncManager';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, spacing, radius, typography } from '../theme';
+import { colors, spacing, radius, typography, shadows } from '../theme';
 
-// YES / NO / NA dropdown items
-const ynaItems = [
-  { label: 'Yes', value: 'Yes' },
-  { label: 'No', value: 'No' },
-  { label: 'N/A', value: 'NA' },
-];
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
-// ── Static sub-components (defined OUTSIDE to prevent re-mount on every render) ──
+// ── Item helpers ──────────────────────────────────────────────────────────────
+const opts = arr => arr.map(v => ({ label: v, value: v }));
+
+const YN_ITEMS   = opts(['YES', 'NO']);
+const INFRA_ITEMS = opts(['GOOD', 'NOT GOOD', 'BAD', 'NOT SAFE']);
+const PT_ITEMS   = opts(['PERMANENT', 'TEMPORARY']);
+const LOC_TYPE_ITEMS = opts([
+  'GRAM SACHIVALAY', 'PANCHAYAT BHAWAN', 'CHAUPAL', 'ANGANWADI',
+  'SCHOOL', 'LIBRARY', 'DHARMSHALA', 'CSC CENTER', 'MAHILA CHAUPAL', 'OTHERS',
+]);
+const CURR_LOC_ITEMS = opts(['SAME AS ORIGINAL LOCATION', 'NOT FOUND', 'OTHER (specify below)']);
+const HOURS_ITEMS = opts(Array.from({length: 25}, (_, i) => String(i)));
+
+// ── Shared components ─────────────────────────────────────────────────────────
 const SectionCard = ({ title, color = colors.primary, children }) => (
   <View style={[styles.sectionCard, { borderLeftColor: color }]}>
     {title ? <Text style={[styles.sectionTag, { color }]}>{title}</Text> : null}
@@ -29,749 +42,842 @@ const SectionCard = ({ title, color = colors.primary, children }) => (
 
 const FieldLabel = ({ text }) => <Text style={styles.fieldLabel}>{text}</Text>;
 
-const TextF = ({ label, placeholder, value, onChangeText, keyboardType, multiline }) => {
-  const [isFocused, setIsFocused] = React.useState(false);
+const TextF = React.forwardRef(({ label, placeholder, value, onChangeText, keyboardType, multiline, returnKeyType, onSubmitEditing }, ref) => {
+  const [focused, setFocused] = useState(false);
   return (
     <View style={styles.formGroup}>
       <FieldLabel text={label} />
       <TextInput
-        style={[styles.input,
-          multiline && { height: 80, textAlignVertical: 'top', paddingTop: 12 },
-          isFocused && styles.inputFocused,
+        ref={ref}
+        style={[
+          styles.input,
+          multiline && { height: 80, textAlignVertical: 'top', paddingTop: 14 },
+          focused && styles.inputFocused,
         ]}
         placeholder={placeholder || `Enter ${label.toLowerCase()}`}
-        value={value}
+        value={value ?? ''}
         onChangeText={onChangeText}
         keyboardType={keyboardType || 'default'}
         placeholderTextColor={colors.placeholder}
         multiline={multiline}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
+        returnKeyType={returnKeyType || 'default'}
+        onSubmitEditing={onSubmitEditing}
+        blurOnSubmit={returnKeyType === 'next' ? false : undefined}
+        onFocus={() => {
+          setFocused(true);
+        }}
+        onBlur={() => {
+          setFocused(false);
+        }}
       />
     </View>
   );
-};
+});
 
-const WheelF = ({ label, value, onChange, items, disabled, placeholder }) => (
-  <WheelPickerField
-    label={label} value={value} onChange={onChange}
-    items={items} disabled={disabled} placeholder={placeholder || 'Select option...'}
-  />
-);
+const WheelF = React.forwardRef(({ label, value, onChange, items, disabled, placeholder }, ref) => (
+  <View style={styles.formGroup}>
+    <WheelPickerField
+      ref={ref}
+      label={label} value={value} onChange={onChange}
+      items={items} disabled={disabled}
+      placeholder={placeholder || 'Select...'}
+    />
+  </View>
+));
 
-const PhoneField = ({ label, value, onChangeText, placeholder }) => {
-  const [isFocused, setIsFocused] = React.useState(false);
-  return (
-    <View style={styles.formGroup}>
-      <FieldLabel text={label} />
-      <View style={[styles.phoneWrapper, isFocused && styles.inputFocused]}>
-        <View style={styles.phonePrefix}><Text style={styles.phonePrefixText}>+91</Text></View>
-        <View style={styles.phoneDivider} />
-        <TextInput
-          style={styles.phoneInput}
-          placeholder={placeholder || "XXXXXX XXXXX"}
-          value={value}
-          onChangeText={onChangeText}
-          keyboardType="number-pad" maxLength={10}
-          placeholderTextColor={colors.placeholder}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-        />
-        {value.length > 0 && <Text style={styles.phoneCount}>{value.length}/10</Text>}
-      </View>
-    </View>
-  );
-};
+const GpsField = React.forwardRef(({ label, lat, long, onChangeLat, onChangeLong, onCapture, capturing, returnKeyType, onSubmitEditing }, ref) => {
+  const [focusedLat, setFocusedLat] = useState(false);
+  const [focusedLng, setFocusedLng] = useState(false);
+  const longRef = React.useRef(null);
+  
+  React.useImperativeHandle(ref, () => ({
+    focus: () => {
+      // Focus latitude by default when this component is focused
+    }
+  }));
 
-const GpsField = ({ label, value, onChangeText, placeholder, onFetchLocation, isFetching, isFetchingThis }) => {
-  const [isFocused, setIsFocused] = React.useState(false);
   return (
     <View style={styles.formGroup}>
       <FieldLabel text={label} />
       <View style={styles.gpsRow}>
         <TextInput
-          style={[styles.input, { flex: 1 }, isFocused && styles.inputFocused]}
-          placeholder={placeholder || "lat, long"}
-          value={value}
-          onChangeText={onChangeText}
+          style={[styles.input, { flex: 1 }, focusedLat && styles.inputFocused]}
+          placeholder="Latitude"
+          value={lat ?? ''}
+          onChangeText={onChangeLat}
+          keyboardType="decimal-pad"
           placeholderTextColor={colors.placeholder}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
+          returnKeyType="next"
+          onSubmitEditing={() => { longRef.current?.focus(); }}
+          blurOnSubmit={false}
+          onFocus={() => setFocusedLat(true)}
+          onBlur={() => setFocusedLat(false)}
         />
-        <TouchableOpacity style={styles.gpsBtn} onPress={onFetchLocation} disabled={isFetching}>
-          {isFetchingThis
-            ? <ActivityIndicator color={colors.white} size="small" />
-            : <Text style={styles.gpsBtnText}>📍</Text>}
+        <TextInput
+          ref={longRef}
+          style={[styles.input, { flex: 1, marginLeft: 8 }, focusedLng && styles.inputFocused]}
+          placeholder="Longitude"
+          value={long ?? ''}
+          onChangeText={onChangeLong}
+          keyboardType="decimal-pad"
+          placeholderTextColor={colors.placeholder}
+          returnKeyType={returnKeyType || 'default'}
+          onSubmitEditing={onSubmitEditing}
+          blurOnSubmit={returnKeyType === 'next' ? false : undefined}
+          onFocus={() => setFocusedLng(true)}
+          onBlur={() => setFocusedLng(false)}
+        />
+        <TouchableOpacity style={styles.gpsBtn} onPress={onCapture} disabled={capturing}>
+          {capturing
+            ? <ActivityIndicator size="small" color={colors.primary} />
+            : <Feather name="map-pin" size={20} color={colors.primary} />
+          }
         </TouchableOpacity>
       </View>
     </View>
   );
+});
+
+const PhoneField = React.forwardRef(({ label, value, onChangeText, returnKeyType, onSubmitEditing }, ref) => {
+  const [focused, setFocused] = useState(false);
+  return (
+    <View style={styles.formGroup}>
+      <FieldLabel text={label} />
+      <View style={[styles.phoneWrapper, focused && styles.inputFocused]}>
+        <View style={styles.phonePrefix}><Text style={styles.phonePrefixText}>+91</Text></View>
+        <View style={styles.phoneDivider} />
+        <TextInput
+          ref={ref}
+          style={styles.phoneInput}
+          placeholder="10-digit number"
+          value={value ?? ''}
+          onChangeText={v => onChangeText(v.replace(/\D/g, '').slice(0, 10))}
+          keyboardType="number-pad"
+          maxLength={10}
+          placeholderTextColor={colors.placeholder}
+          returnKeyType={returnKeyType || 'default'}
+          onSubmitEditing={onSubmitEditing}
+          blurOnSubmit={returnKeyType === 'next' ? false : undefined}
+          onFocus={() => {
+            setFocused(true);
+          }}
+          onBlur={() => {
+            setFocused(false);
+          }}
+        />
+      </View>
+    </View>
+  );
+});
+
+// ── Initial state ─────────────────────────────────────────────────────────────
+const INIT = {
+  stateId: null, stateName: '', districtId: null, districtName: '',
+  blockId: null, blockName: '', gramPanchayatId: null, gramPanchayatName: '',
+  gramPanchayatCode: '', phase: '', surveyVendor: '', remarks: '',
+  origLocationType: '', origInfraStatus: '', origElectricity: '',
+  origPowerHours: '', origSolar: '', origEarthing: '', origLat: '', origLong: '',
+  currentLocation: '', currentLocationOther: '', currentPermTemp: '',
+  currentLat: '', currentLong: '',
+  gpBhawanAvailable: '', gpBhawanInfraStatus: '', gpBhawanEnergyMeter: '',
+  gpBhawanEarthing: '', gpBhawanSolar: '', gpBhawanLat: '', gpBhawanLong: '',
+  proposedBuilding: '', proposedRackSpace: '', proposedLat: '', proposedLong: '',
+  proposedEnergyMeter: '', proposedEarthing: '', proposedSolar: '',
+  proposedPoleLength: '', proposedPoleLat: '', proposedPoleLong: '', proposedRemarks: '',
+  sarpanchName: '', sarpanchContact: '',
 };
 
-const SurveyFormScreen = ({ navigation }) => {
+// ── Screen ────────────────────────────────────────────────────────────────────
+export default function SurveyFormScreen({ route, navigation }) {
   const { userInfo } = useContext(AuthContext);
+  const { showAlert: alert } = useAlert();
+  const existingSurvey = route?.params?.survey;
+  
+  let initialPhotos = [];
+  if (existingSurvey?.photoBase64) {
+    try {
+      const parsed = JSON.parse(existingSurvey.photoBase64);
+      initialPhotos = Array.isArray(parsed) ? parsed : [existingSurvey.photoBase64];
+    } catch(e) {
+      initialPhotos = [existingSurvey.photoBase64];
+    }
+  }
 
-  // ── Master Data ──────────────────────────────────────────────
-  const [masterData, setMasterData] = useState({ states: [], districts: [], blocks: [], gramPanchayats: [] });
-  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [form, setForm] = useState(existingSurvey ? { ...INIT, ...existingSurvey, photos: initialPhotos } : { ...INIT, photos: [] });
+  const [masterData, setMD] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [gpsLoading, setGpsLoading] = useState({});
+  const [addModal, setAddModal] = useState(null);
+  const [addName, setAddName] = useState('');
+  const [addLoading, setAddLoading] = useState(false);
+  const insets = useSafeAreaInsets();
+  const sarpanchContactRef = React.useRef(null);
+  const remarksRef = React.useRef(null);
+  const districtRef = React.useRef(null);
+  const blockRef = React.useRef(null);
+  const gpRef = React.useRef(null);
+  const vendorRef = React.useRef(null);
 
-  // ── Location Dropdowns ───────────────────────────────────────
-  const [stateId, setStateId] = useState(null);
-  const [districtId, setDistrictId] = useState(null);
-  const [blockId, setBlockId] = useState(null);
-  const [gpId, setGpId] = useState(null);
-
-  // ── Administrative Fields ────────────────────────────────────
-  const [gpName, setGpName] = useState('');
-  const [sarpanchName, setSarpanchName] = useState('');
-  const [sarpanchContact, setSarpanchContact] = useState('');
-
-  // ── Power & Infrastructure ───────────────────────────────────
-  const [electricityHrs, setElectricityHrs] = useState('');
-  const [electricMeter, setElectricMeter] = useState(null);
-  const [solarAvail, setSolarAvail] = useState(null);
-  const [earthing, setEarthing] = useState(null);
-  const [infraStatus, setInfraStatus] = useState('');
-
-  // ── GP Bhawan Details ────────────────────────────────────────
-  const [gpBhawanAvail, setGpBhawanAvail] = useState(null);
-  const [gpBhawanInfra, setGpBhawanInfra] = useState('');
-  const [gpBhawanMeter, setGpBhawanMeter] = useState(null);
-  const [gpBhawanSolar, setGpBhawanSolar] = useState(null);
-  const [gpBhawanEarthing, setGpBhawanEarthing] = useState(null);
-
-  // ── Geospatial Data ──────────────────────────────────────────
-  const [gpAvailAsKml, setGpAvailAsKml] = useState('');
-  const [gpOriginalLoc, setGpOriginalLoc] = useState('');
-  const [gpCurrentLoc, setGpCurrentLoc] = useState('');
-  const [gpPlLoc, setGpPlLoc] = useState('');
-  const [isFetchingLocation, setIsFetchingLocation] = useState(false);
-  const [fetchingTarget, setFetchingTarget] = useState(null); // 'current' | 'original' | 'plot'
-
-  // ── Respondent ───────────────────────────────────────────────
-  const [respondentName, setRespondentName] = useState('');
-  const [age, setAge] = useState(null);
-  const [ageItems] = useState(
-    [{ label: 'Under 18', value: 17 }].concat(
-      Array.from({ length: 83 }, (_, i) => ({ label: String(i + 18), value: i + 18 }))
-    ).concat([{ label: '100+', value: 100 }])
+  // Derived lists
+  const states = useMemo(() => masterData?.states ?? [], [masterData]);
+  const districts = useMemo(() => form.stateId
+    ? (masterData?.districts ?? []).filter(d => d.stateId === form.stateId) : [], 
+    [masterData, form.stateId]
   );
-  const [gender, setGender] = useState('Male');
-  const [contact, setContact] = useState('');
+  const blocks = useMemo(() => form.districtId
+    ? (masterData?.blocks ?? []).filter(b => b.districtId === form.districtId) : [],
+    [masterData, form.districtId]
+  );
+  const gps = useMemo(() => form.blockId
+    ? (masterData?.gramPanchayats ?? []).filter(g => g.blockId === form.blockId) : [],
+    [masterData, form.blockId]
+  );
 
-  // ── Documentation ────────────────────────────────────────────
-  const [remarks, setRemarks] = useState('');
-  const [photos, setPhotos] = useState([]); // [{ uri, fileName }]
-
-  // ── Storage ──────────────────────────────────────────────────
-  const [storageInfo, setStorageInfo] = useState({ used: 0, total: 100 }); // MB
-
-  // ── UI State ─────────────────────────────────────────────────
-  const [isSaving, setIsSaving] = useState(false);
-
-  // ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    loadMaster();
-    loadStorageInfo();
+    (async () => {
+      let md = null;
+      try { md = await getMasterData(); } catch (_) {}
+      if (md) setMD(md);
+      try {
+        const fresh = await syncMasterData();
+        if (fresh) setMD(fresh);
+      } catch (_) {
+        if (!md) setMD(null);
+      }
+    })();
   }, []);
 
-  const loadMaster = async () => {
-    setIsLoadingData(true);
-    try {
-      let data = await getMasterData();
-      if (!data || !data.states || data.states.length === 0) {
-        data = await syncMasterData();
-      }
-      if (data) setMasterData(data);
-    } catch (_) {}
-    finally { setIsLoadingData(false); }
-  };
+  const set = useCallback((k, v) => setForm(f => ({ ...f, [k]: v })), []);
 
-  const loadStorageInfo = async () => {
-    try {
-      const info = await FileSystem.getInfoAsync(FileSystem.documentDirectory);
-      const freeMB = info.freeSpace ? Math.floor(info.freeSpace / (1024 * 1024)) : null;
-      const totalMB = info.totalSpace ? Math.floor(info.totalSpace / (1024 * 1024)) : null;
-      if (freeMB !== null && totalMB !== null) {
-        setStorageInfo({ used: totalMB - freeMB, total: totalMB });
-      }
-    } catch (_) {}
-  };
-
-  // ── GPS ────────────────────────────────────────────────────
-  const fetchLiveLocation = async (target) => {
-    setIsFetchingLocation(true);
-    setFetchingTarget(target);
+  const captureGps = async (latKey, longKey) => {
+    setGpsLoading(p => ({ ...p, [latKey]: true }));
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') { alert('Error', 'Permission denied'); return; }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      set(latKey, String(loc.coords.latitude));
+      set(longKey, String(loc.coords.longitude));
+    } catch (e) {
+      alert('GPS Error', e.message);
+    } finally {
+      setGpsLoading(p => ({ ...p, [latKey]: false }));
+    }
+  };
+
+  const takeWithCamera = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location permission is required.');
+        alert('Permission Denied', 'Camera permission is required.');
         return;
       }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const coords = `${loc.coords.latitude.toFixed(6)}, ${loc.coords.longitude.toFixed(6)}`;
-      if (target === 'current') setGpCurrentLoc(coords);
-      else if (target === 'original') setGpOriginalLoc(coords);
-      else if (target === 'plot') setGpPlLoc(coords);
-    } catch {
-      Alert.alert('Error', 'Could not get location. Please try again.');
-    } finally {
-      setIsFetchingLocation(false);
-      setFetchingTarget(null);
-    }
-  };
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.6,
+        base64: true,
+      });
 
-  // ── Camera / Gallery ───────────────────────────────────────
-  const handlePhotoOption = () => {
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options: ['Cancel', 'Take Photo', 'Choose from Gallery'], cancelButtonIndex: 0 },
-        (idx) => { if (idx === 1) takePhoto(); else if (idx === 2) pickFromGallery(); }
-      );
-    } else {
-      Alert.alert('Upload Photo', 'Choose source', [
-        { text: 'Camera', onPress: takePhoto },
-        { text: 'Gallery', onPress: pickFromGallery },
-        { text: 'Cancel', style: 'cancel' },
-      ]);
-    }
-  };
-
-  const takePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('Permission required', 'Camera access is needed.'); return; }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: 'images',
-      quality: 0.7,
-      allowsEditing: false,
-    });
-    if (!result.canceled) {
-      const asset = result.assets[0];
-      setPhotos(prev => [...prev, { uri: asset.uri, fileName: asset.fileName || `SITE_${Date.now()}.jpg` }]);
+      if (!result.canceled && result.assets?.length > 0) {
+        set('photos', [...(form.photos || []), result.assets[0].base64]);
+      }
+    } catch (e) {
+      alert('Camera Error', e.message);
     }
   };
 
   const pickFromGallery = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('Permission required', 'Photo library access is needed.'); return; }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: 'images',
-      quality: 0.7,
-      allowsMultipleSelection: true,
-      selectionLimit: 10,
-    });
-    if (!result.canceled) {
-      const newPhotos = result.assets.map(a => ({ uri: a.uri, fileName: a.fileName || `SITE_${Date.now()}.jpg` }));
-      setPhotos(prev => [...prev, ...newPhotos]);
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        alert('Permission Denied', 'Gallery permission is required.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true,
+        quality: 0.6,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets?.length > 0) {
+        const newPhotos = result.assets.map(a => a.base64);
+        set('photos', [...(form.photos || []), ...newPhotos]);
+      }
+    } catch (e) {
+      alert('Gallery Error', e.message);
     }
   };
 
-  // ── Save ───────────────────────────────────────────────────
-  const handleSave = async (syncNow = false) => {
-    if (!stateId || !districtId || !blockId || !gpId || !respondentName) {
-      Alert.alert('Incomplete Form', 'Please fill all required fields (location + respondent name).');
+  const removePhoto = (index) => {
+    const updated = [...form.photos];
+    updated.splice(index, 1);
+    set('photos', updated);
+  };
+
+  const capturePhoto = () => {
+    if (Platform.OS === 'web') {
+      pickFromGallery();
       return;
     }
-    setIsSaving(true);
+    Alert.alert('Add Photo', 'Choose photo source', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Gallery', onPress: pickFromGallery },
+      { text: 'Camera', onPress: takeWithCamera },
+    ]);
+  };
+
+  const handleSubmit = async (isDraft = false) => {
+    if (!isDraft) {
+      if (!form.gramPanchayatId) {
+        alert('Required', 'Please select Gram Panchayat');
+        return;
+      }
+    }
+    setSaving(true);
     try {
-      await saveSurveyOffline({
-        userId: userInfo.id,
-        stateId, districtId, blockId, gramPanchayatId: gpId,
-        gpName, sarpanchName, sarpanchContact,
-        electricityHrs, electricMeter, solarAvail, earthing, infraStatus,
-        gpBhawanAvail, gpBhawanInfra, gpBhawanMeter, gpBhawanSolar, gpBhawanEarthing,
-        gpAvailAsKml, gpOriginalLoc, gpCurrentLoc, gpPlLoc,
-        respondentName, age, gender, contact: contact ? `+91${contact}` : '',
-        remarks, photoUris: photos.map(p => p.uri),
-        latitude: null, longitude: null, responses: {},
+      const finalData = { ...form };
+      if (finalData.photos && finalData.photos.length > 0) {
+        finalData.photoBase64 = JSON.stringify(finalData.photos);
+      } else {
+        finalData.photoBase64 = null;
+      }
+      delete finalData.photos;
+      
+      finalData.surveyDone = isDraft ? 'DRAFT' : 'YES';
+      finalData.surveyDate = new Date().toISOString().split('T')[0];
+      ['origLat','origLong','currentLat','currentLong','gpBhawanLat','gpBhawanLong',
+       'proposedLat','proposedLong','proposedPoleLat','proposedPoleLong'].forEach(k => {
+        finalData[k] = finalData[k] ? parseFloat(finalData[k]) : null;
       });
-      Alert.alert('Saved', syncNow ? 'Saved and queued for sync.' : 'Survey saved offline.', [
-        { text: 'OK', onPress: () => navigation.goBack() }
-      ]);
-    } catch {
-      Alert.alert('Error', 'Could not save. Please try again.');
+
+      await saveSurveyOffline(finalData, userInfo?.id);
+      
+      alert(isDraft ? 'Draft Saved' : 'Saved', isDraft ? 'Draft saved locally.' : 'Survey saved locally. Sync when online.');
+      setTimeout(() => navigation.goBack(), 500);
+      
+    } catch (e) {
+      alert('Error', e.message);
     } finally {
-      setIsSaving(false);
+      setSaving(false);
     }
   };
 
-  const filteredDistricts = masterData.districts.filter(d => String(d.stateId) === String(stateId));
-  const filteredBlocks = masterData.blocks.filter(b => String(b.districtId) === String(districtId));
-  const filteredGPs = masterData.gramPanchayats.filter(g => String(g.blockId) === String(blockId));
+  const isOtherCurrent = form.currentLocation === 'OTHER (specify below)';
+  const showCurrentDetails = form.currentLocation && form.currentLocation !== 'NOT FOUND';
 
+  const handleAddSubmit = async () => {
+    if (!addName.trim()) return;
+    setAddLoading(true);
+    try {
+      let res;
+      if (addModal === 'state') res = await api.post('/master/states', { name: addName });
+      else if (addModal === 'district') res = await api.post('/master/districts', { name: addName, stateId: form.stateId });
+      else if (addModal === 'block') res = await api.post('/master/blocks', { name: addName, districtId: form.districtId });
+      else if (addModal === 'gp') res = await api.post('/master/grampanchayats', { name: addName, blockId: form.blockId });
 
+      const fresh = await syncMasterData();
+      if (fresh) setMD(fresh);
 
-  const storagePercent = Math.min((storageInfo.used / storageInfo.total) * 100, 100);
-  const storageFull = storagePercent > 90;
+      const newItem = res.data;
+      if (addModal === 'state') {
+        setForm(f => ({ ...f, stateName: newItem.name, stateId: newItem.id, districtName: '', districtId: null, blockName: '', blockId: null, gramPanchayatName: '', gramPanchayatId: null }));
+      } else if (addModal === 'district') {
+        setForm(f => ({ ...f, districtName: newItem.name, districtId: newItem.id, blockName: '', blockId: null, gramPanchayatName: '', gramPanchayatId: null }));
+      } else if (addModal === 'block') {
+        setForm(f => ({ ...f, blockName: newItem.name, blockId: newItem.id, gramPanchayatName: '', gramPanchayatId: null }));
+      } else if (addModal === 'gp') {
+        setForm(f => ({ ...f, gramPanchayatName: newItem.name, gramPanchayatId: newItem.id }));
+      }
+      setAddModal(null);
+      setAddName('');
+    } catch (e) {
+      alert('Error', 'Failed to add. Are you online?');
+    } finally {
+      setAddLoading(false);
+    }
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} translucent />
 
       {/* Header */}
-      <View style={styles.headerBar}>
-        <View style={styles.headerLeft}>
-          <View style={styles.signalIcon}>
-            {[6, 10, 14, 18].map((h, i) => <View key={i} style={[styles.bar, { height: h }]} />)}
-          </View>
-          <Text style={styles.appName}>GP Survey Pro</Text>
-        </View>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.cancelBtn}>
-          <Text style={styles.cancelText}>✕ Cancel</Text>
+      <View style={[styles.header, { paddingTop: (insets.top || 14) + 14, paddingBottom: 14 }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Feather name="chevron-left" size={28} color="#fff" />
         </TouchableOpacity>
-      </View>
-      <View style={styles.headerUnderline} />
-
-      {/* Offline Banner */}
-      <View style={styles.offlineBar}>
-        <Text style={styles.offlineText}>⊘  OFFLINE MODE — DATA WILL BE STORED LOCALLY</Text>
+        <Text style={styles.headerTitle}>BSNL GP Survey</Text>
+        <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView
-        style={styles.scrollContent}
-        nestedScrollEnabled keyboardShouldPersistTaps="handled"
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView 
+          style={styles.scroll} 
+          contentContainerStyle={{ paddingBottom: 100 }}
+        keyboardShouldPersistTaps="handled" 
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.pageTitle}>New Data Capture</Text>
-        <Text style={styles.pageSubtitle}>Industrial Grade Survey Entry</Text>
+        <View style={styles.body}>
 
-        {isLoadingData && (
-          <View style={styles.loadingBanner}>
-            <ActivityIndicator color={colors.primary} size="small" />
-            <Text style={styles.loadingText}>Loading master data...</Text>
-          </View>
-        )}
-
-        {/* ── ADMINISTRATIVE ─────────────────────────────── */}
-        <SectionCard title="ADMINISTRATIVE" zBase={9000}>
-          <WheelF label="STATE *"
-            value={stateId}
-            onChange={(v) => { setStateId(v); setDistrictId(null); setBlockId(null); setGpId(null); }}
-            items={masterData.states.map(s => ({ label: s.name, value: s.id }))}
-            placeholder={isLoadingData ? 'Loading...' : 'Select State...'} />
-
-          <WheelF label="DISTRICT *"
-            value={districtId}
-            onChange={(v) => { setDistrictId(v); setBlockId(null); setGpId(null); }}
-            items={filteredDistricts.map(d => ({ label: d.name, value: d.id }))}
-            disabled={!stateId} placeholder="Select District..." />
-
-          <WheelF label="BLOCK *"
-            value={blockId}
-            onChange={(v) => { setBlockId(v); setGpId(null); }}
-            items={filteredBlocks.map(b => ({ label: b.name, value: b.id }))}
-            disabled={!districtId} placeholder="Select Block..." />
-
-          <WheelF label="GRAM PANCHAYAT *"
-            value={gpId} onChange={setGpId}
-            items={filteredGPs.map(g => ({ label: g.name, value: g.id }))}
-            disabled={!blockId} placeholder="Select GP..." />
-
-          <TextF label="GP NAME" placeholder="Enter Gram Panchayat Name" value={gpName} onChangeText={setGpName} />
-          <TextF label="SARPANCH NAME" placeholder="Enter Sarpanch Name" value={sarpanchName} onChangeText={setSarpanchName} />
-
-          {/* Sarpanch Contact */}
-          <PhoneField
-            label="SARPANCH CONTACT NO"
-            placeholder="XXXXXX XXXXX"
-            value={sarpanchContact}
-            onChangeText={(v) => setSarpanchContact(v.replace(/\D/g, '').slice(0, 10))}
-          />
-        </SectionCard>
-
-        {/* ── POWER & INFRASTRUCTURE ─────────────────────── */}
-        <SectionCard title="POWER & INFRASTRUCTURE" color={colors.secondary} zBase={5000}>
-          <TextF label="ELECTRICITY AVAILABLE IN HRS" placeholder="e.g. 16" value={electricityHrs} onChangeText={setElectricityHrs} keyboardType="numeric" />
-          <WheelF label="ELECTRIC METER AVAILABLE" value={electricMeter} onChange={setElectricMeter} items={ynaItems} />
-          <WheelF label="SOLAR AVAILABILITY" value={solarAvail} onChange={setSolarAvail} items={ynaItems} />
-          <WheelF label="EARTHING AVAILABILITY" value={earthing} onChange={setEarthing} items={ynaItems} />
-          <TextF label="INFRA STATUS" placeholder="Current infrastructure status" value={infraStatus} onChangeText={setInfraStatus} />
-        </SectionCard>
-
-        {/* ── GP BHAWAN DETAILS ──────────────────────────── */}
-        <SectionCard title="GP BHAWAN DETAILS" color={colors.success} zBase={4000}>
-          <WheelF label="GP BHAWAN AVAILABILITY" value={gpBhawanAvail} onChange={setGpBhawanAvail} items={ynaItems} />
-          <TextF label="INFRA OF GP BHAWAN" placeholder="Infrastructure description" value={gpBhawanInfra} onChangeText={setGpBhawanInfra} />
-          <WheelF label="ELECTRIC METER IN GP BHAWAN" value={gpBhawanMeter} onChange={setGpBhawanMeter} items={ynaItems} />
-          <WheelF label="SOLAR AVAILABILITY IN GP BHAWAN" value={gpBhawanSolar} onChange={setGpBhawanSolar} items={ynaItems} />
-          <WheelF label="EARTHING AVAILABILITY IN GP BHAWAN" value={gpBhawanEarthing} onChange={setGpBhawanEarthing} items={ynaItems} />
-        </SectionCard>
-
-        {/* ── GEOSPATIAL DATA ────────────────────────────── */}
-        <SectionCard title="GEOSPATIAL DATA" color="#7B2FBE" zBase={3000}>
-          <TextF label="GP AVAILABLE AS PER KML" placeholder="Location name / status" value={gpAvailAsKml} onChangeText={setGpAvailAsKml} />
-
-          {/* GP Original Location */}
-          <GpsField
-            label="GP ORIGINAL LOCATION"
-            value={gpOriginalLoc}
-            onChangeText={setGpOriginalLoc}
-            onFetchLocation={() => fetchLiveLocation('original')}
-            isFetching={isFetchingLocation}
-            isFetchingThis={isFetchingLocation && fetchingTarget === 'original'}
-          />
-
-          {/* GP Current Location */}
-          <GpsField
-            label="GP CURRENT LOCATION"
-            value={gpCurrentLoc}
-            onChangeText={setGpCurrentLoc}
-            onFetchLocation={() => fetchLiveLocation('current')}
-            isFetching={isFetchingLocation}
-            isFetchingThis={isFetchingLocation && fetchingTarget === 'current'}
-          />
-
-          {/* GP Plot Location */}
-          <GpsField
-            label="GP PLOT LOCATION"
-            value={gpPlLoc}
-            onChangeText={setGpPlLoc}
-            onFetchLocation={() => fetchLiveLocation('plot')}
-            isFetching={isFetchingLocation}
-            isFetchingThis={isFetchingLocation && fetchingTarget === 'plot'}
-          />
-        </SectionCard>
-
-        {/* Step divider */}
-        <View style={styles.stepRow}>
-          <View style={styles.stepLine} />
-          <Text style={styles.stepLabel}>STEP 2 OF 3: RESPONDENT</Text>
-          <View style={styles.stepLine} />
-        </View>
-
-        {/* ── RESPONDENT DETAILS ─────────────────────────── */}
-        <SectionCard title="" zBase={2000}>
-          <TextF label="RESPONDENT NAME *" placeholder="Enter full name" value={respondentName} onChangeText={setRespondentName} />
-
-          <WheelF label="AGE" value={age} onChange={setAge} items={ageItems} placeholder="Select Age..." />
-          <WheelF label="GENDER" value={gender} onChange={setGender}
-            items={[{ label: 'Male', value: 'Male' }, { label: 'Female', value: 'Female' }, { label: 'Other', value: 'Other' }]} />
-
-          {/* Contact */}
-          <PhoneField
-            label="CONTACT NUMBER"
-            placeholder="10-digit mobile number"
-            value={contact}
-            onChangeText={(v) => setContact(v.replace(/\D/g, '').slice(0, 10))}
-          />
-        </SectionCard>
-
-        {/* Step divider */}
-        <View style={styles.stepRow}>
-          <View style={styles.stepLine} />
-          <Text style={styles.stepLabel}>STEP 3 OF 3: DOCUMENTATION</Text>
-          <View style={styles.stepLine} />
-        </View>
-
-        {/* ── DOCUMENTATION ─────────────────────────────── */}
-        <SectionCard title="DOCUMENTATION" zBase={1000}>
-          <TextF label="REMARKS IF ANY" placeholder="Enter any additional remarks..." value={remarks} onChangeText={setRemarks} multiline />
-
-          {/* Photo Upload */}
-          <View style={styles.formGroup}>
-            <View style={styles.photoHeaderRow}>
-              <FieldLabel text={`SITE PHOTOS${photos.length > 0 ? ` (${photos.length})` : ''}`} />
-            </View>
-
-            {/* Thumbnail grid */}
-            {photos.length > 0 ? (
-              <View style={styles.photoGrid}>
-                {photos.map((p, idx) => (
-                  <View key={idx} style={styles.photoThumb}>
-                    <Image source={{ uri: p.uri }} style={styles.thumbImage} />
-                    <TouchableOpacity
-                      style={styles.thumbRemove}
-                      onPress={() => setPhotos(prev => prev.filter((_, i) => i !== idx))}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Text style={styles.thumbRemoveText}>✕</Text>
-                    </TouchableOpacity>
-                    <Text style={styles.thumbLabel} numberOfLines={1}>{p.fileName}</Text>
-                  </View>
-                ))}
+          {/* ── 0: GP IDENTIFICATION ── */}
+          <SectionCard title="SECTION 0 · GP IDENTIFICATION" color={colors.primary}>
+            <WheelF
+              label="STATE / UT"
+              value={form.stateName}
+              items={[...states.map(s => ({ label: s.name, value: s.name })), { label: '+ Add New State...', value: '__ADD__' }]}
+              placeholder="Select state..."
+              onChange={name => {
+                if (name === '__ADD__') { setAddModal('state'); return; }
+                const s = states.find(x => x.name === name);
                 
-                {/* Inline Add Button inside the grid */}
-                {photos.length < 10 && (
-                  <TouchableOpacity style={styles.photoGridAdd} onPress={handlePhotoOption}>
-                    <Text style={styles.photoGridAddIcon}>＋</Text>
-                    <Text style={styles.photoGridAddText}>Add Photo</Text>
+                setForm(f => ({
+                  ...f, stateName: name, stateId: s?.id ?? null,
+                  districtName: '', districtId: null,
+                  blockName: '', blockId: null,
+                  gramPanchayatName: '', gramPanchayatId: null, gramPanchayatCode: '',
+                }));
+              }}
+            />
+            <WheelF
+              ref={districtRef}
+              label="DISTRICT"
+              value={form.districtName}
+              items={[...districts.map(d => ({ label: d.name, value: d.name })), form.stateId ? { label: '+ Add New District...', value: '__ADD__' } : null].filter(Boolean)}
+              placeholder={form.stateId ? 'Select district...' : '— Select state first —'}
+              disabled={!form.stateId}
+              onChange={name => {
+                if (name === '__ADD__') { setAddModal('district'); return; }
+                const d = districts.find(x => x.name === name);
+                
+                setForm(f => ({
+                  ...f, districtName: name, districtId: d?.id ?? null,
+                  blockName: '', blockId: null,
+                  gramPanchayatName: '', gramPanchayatId: null, gramPanchayatCode: '',
+                }));
+              }}
+            />
+            <WheelF
+              ref={blockRef}
+              label="BLOCK"
+              value={form.blockName}
+              items={[...blocks.map(b => ({ label: b.name, value: b.name })), form.districtId ? { label: '+ Add New Block...', value: '__ADD__' } : null].filter(Boolean)}
+              placeholder={form.districtId ? 'Select block...' : '— Select district first —'}
+              disabled={!form.districtId}
+              onChange={name => {
+                if (name === '__ADD__') { setAddModal('block'); return; }
+                const b = blocks.find(x => x.name === name);
+                
+                setForm(f => ({
+                  ...f, blockName: name, blockId: b?.id ?? null,
+                  gramPanchayatName: '', gramPanchayatId: null, gramPanchayatCode: '',
+                }));
+              }}
+            />
+            <WheelF
+              ref={gpRef}
+              label="GRAM PANCHAYAT"
+              value={form.gramPanchayatName}
+              items={[...gps.map(g => ({ label: g.name, value: g.name })), form.blockId ? { label: '+ Add New GP...', value: '__ADD__' } : null].filter(Boolean)}
+              placeholder={form.blockId ? 'Select GP...' : '— Select block first —'}
+              disabled={!form.blockId}
+              onChange={name => {
+                if (name === '__ADD__') { setAddModal('gp'); return; }
+                const g = gps.find(x => x.name === name);
+                
+                setForm(f => ({
+                  ...f, gramPanchayatName: name,
+                  gramPanchayatId: g?.id ?? null, gramPanchayatCode: g?.code ?? '',
+                }));
+                if (name) {
+                  // Small tick to ensure React state batches before focus
+                  setTimeout(() => vendorRef.current?.focus(), 50);
+                }
+              }}
+            />
+            {!!form.gramPanchayatCode && (
+              <View style={styles.gpCodeRow}>
+                <Text style={styles.gpCodeLabel}>GP CODE</Text>
+                <Text style={styles.gpCodeValue}>{form.gramPanchayatCode}</Text>
+              </View>
+            )}
+            <TextF 
+              ref={vendorRef}
+              label="SURVEY VENDOR NAME" 
+              value={form.surveyVendor} 
+              onChangeText={v => set('surveyVendor', v)} 
+              placeholder="Company name" 
+              returnKeyType="next"
+              onSubmitEditing={() => remarksRef.current?.focus()}
+            />
+            <TextF 
+              ref={remarksRef}
+              label="REMARKS" 
+              value={form.remarks} 
+              onChangeText={v => set('remarks', v)} 
+              placeholder="Any notes..." 
+              multiline 
+            />
+          </SectionCard>
+
+          {/* ── A: ORIGINAL LOCATION ── */}
+          <SectionCard title="SECTION A · ORIGINAL LOCATION" color="#0891b2">
+            <Text style={styles.hint}>Per BSNL discussion order / KMZ file</Text>
+            <WheelF label="LOCATION TYPE" value={form.origLocationType} onChange={v => set('origLocationType', v)} items={LOC_TYPE_ITEMS} />
+            <WheelF label="INFRA STATUS" value={form.origInfraStatus} onChange={v => set('origInfraStatus', v)} items={INFRA_ITEMS} />
+            <WheelF label="ELECTRICITY AVAILABLE" value={form.origElectricity} onChange={v => set('origElectricity', v)} items={YN_ITEMS} />
+            <WheelF label="POWER SUPPLY HOURS / DAY" value={form.origPowerHours} onChange={v => set('origPowerHours', v)} items={HOURS_ITEMS} />
+            <WheelF label="SOLAR AVAILABLE" value={form.origSolar} onChange={v => set('origSolar', v)} items={YN_ITEMS} />
+            <WheelF label="EARTHING AVAILABLE" value={form.origEarthing} onChange={v => set('origEarthing', v)} items={YN_ITEMS} />
+            <GpsField
+              label="LAT / LONG"
+              lat={form.origLat} long={form.origLong}
+              onChangeLat={v => set('origLat', v)} onChangeLong={v => set('origLong', v)}
+              onCapture={() => captureGps('origLat', 'origLong')}
+              capturing={!!gpsLoading.origLat}
+            />
+          </SectionCard>
+
+          {/* ── B: CURRENT LOCATION ── */}
+          <SectionCard title="SECTION B · CURRENT LOCATION" color="#7c3aed">
+            <Text style={styles.hint}>Where equipment is actually found on ground</Text>
+            <WheelF
+              label="CURRENT LOCATION STATUS"
+              value={form.currentLocation}
+              onChange={v => {
+                setForm(f => ({ ...f, currentLocation: v, currentLocationOther: '' }));
+              }}
+              items={CURR_LOC_ITEMS}
+            />
+            {isOtherCurrent && (
+              <TextF label="SPECIFY LOCATION" value={form.currentLocationOther} onChangeText={v => set('currentLocationOther', v)} placeholder="e.g. ANGANWADI, SCHOOL..." />
+            )}
+            {showCurrentDetails && (
+              <>
+                <WheelF label="PERMANENT OR TEMPORARY" value={form.currentPermTemp} onChange={v => set('currentPermTemp', v)} items={PT_ITEMS} />
+                <GpsField
+                  label="CURRENT LOCATION LAT / LONG"
+                  lat={form.currentLat} long={form.currentLong}
+                  onChangeLat={v => set('currentLat', v)} onChangeLong={v => set('currentLong', v)}
+                  onCapture={() => captureGps('currentLat', 'currentLong')}
+                  capturing={!!gpsLoading.currentLat}
+                />
+              </>
+            )}
+          </SectionCard>
+
+          {/* ── C: GP BHAWAN ── */}
+          <SectionCard title="SECTION C · GP BHAWAN" color="#d97706">
+            <Text style={styles.hint}>Fill only if Equipment is not installed in GP</Text>
+            <TextF
+              label="GP BHAWAN AVAILABLE?"
+              value={form.gpBhawanAvailable}
+              onChangeText={v => set('gpBhawanAvailable', v)}
+              placeholder="YES / NO / YES BUT USED AS ANGAWADI..."
+            />
+            <WheelF label="INFRA STATUS" value={form.gpBhawanInfraStatus} onChange={v => set('gpBhawanInfraStatus', v)} items={INFRA_ITEMS} />
+            <WheelF label="ENERGY METER INSTALLED" value={form.gpBhawanEnergyMeter} onChange={v => set('gpBhawanEnergyMeter', v)} items={YN_ITEMS} />
+            <WheelF label="EARTHING AVAILABLE" value={form.gpBhawanEarthing} onChange={v => set('gpBhawanEarthing', v)} items={YN_ITEMS} />
+            <WheelF label="SOLAR AVAILABLE" value={form.gpBhawanSolar} onChange={v => set('gpBhawanSolar', v)} items={YN_ITEMS} />
+            <GpsField
+              label="GP BHAWAN LAT / LONG"
+              lat={form.gpBhawanLat} long={form.gpBhawanLong}
+              onChangeLat={v => set('gpBhawanLat', v)} onChangeLong={v => set('gpBhawanLong', v)}
+              onCapture={() => captureGps('gpBhawanLat', 'gpBhawanLong')}
+              capturing={!!gpsLoading.gpBhawanLat}
+            />
+          </SectionCard>
+
+          {/* ── D: PROPOSED LOCATION ── */}
+          <SectionCard title="SECTION D · PROPOSED LOCATION" color="#059669">
+            <Text style={styles.hint}>Fill if Original Location is not applicable for equipment installation</Text>
+            <TextF label="BUILDING NAME" value={form.proposedBuilding} onChangeText={v => set('proposedBuilding', v)} placeholder="e.g. GRAM SACHIVALAY, PANCHAYAT BHAWAN..." />
+            <WheelF label="RACK SPACE AVAILABLE" value={form.proposedRackSpace} onChange={v => set('proposedRackSpace', v)} items={YN_ITEMS} />
+            <GpsField
+              label="PROPOSED LOCATION LAT / LONG"
+              lat={form.proposedLat} long={form.proposedLong}
+              onChangeLat={v => set('proposedLat', v)} onChangeLong={v => set('proposedLong', v)}
+              onCapture={() => captureGps('proposedLat', 'proposedLong')}
+              capturing={!!gpsLoading.proposedLat}
+            />
+            <WheelF label="ENERGY METER INSTALLED" value={form.proposedEnergyMeter} onChange={v => set('proposedEnergyMeter', v)} items={YN_ITEMS} />
+            <WheelF label="EARTHING AVAILABLE" value={form.proposedEarthing} onChange={v => set('proposedEarthing', v)} items={YN_ITEMS} />
+            <WheelF label="SOLAR AVAILABLE" value={form.proposedSolar} onChange={v => set('proposedSolar', v)} items={YN_ITEMS} />
+            <TextF label="POLE LENGTH (ft)" value={form.proposedPoleLength} onChangeText={v => set('proposedPoleLength', v)} keyboardType="numeric" />
+            <GpsField
+              label="POLE LAT / LONG"
+              lat={form.proposedPoleLat} long={form.proposedPoleLong}
+              onChangeLat={v => set('proposedPoleLat', v)} onChangeLong={v => set('proposedPoleLong', v)}
+              onCapture={() => captureGps('proposedPoleLat', 'proposedPoleLong')}
+              capturing={!!gpsLoading.proposedPoleLat}
+            />
+            <TextF label="REMARKS" value={form.proposedRemarks} onChangeText={v => set('proposedRemarks', v)} placeholder="Any notes..." multiline />
+          </SectionCard>
+
+          {/* ── E: SARPANCH ── */}
+          <SectionCard title="SECTION E · SARPANCH DETAILS" color="#dc2626">
+            <TextF 
+              label="SARPANCH NAME" 
+              value={form.sarpanchName} 
+              onChangeText={v => set('sarpanchName', v)} 
+              placeholder="Full name" 
+              returnKeyType="next"
+              onSubmitEditing={() => sarpanchContactRef.current?.focus()}
+            />
+            <PhoneField 
+              ref={sarpanchContactRef}
+              label="CONTACT NUMBER" 
+              value={form.sarpanchContact} 
+              onChangeText={v => set('sarpanchContact', v)} 
+            />
+          </SectionCard>
+
+          {/* ── F: SITE PHOTO ── */}
+          <SectionCard title="SECTION F · SITE PHOTOS" color="#2563eb">
+            <Text style={styles.hint}>Capture clear photos of the site/equipment</Text>
+            
+            {form.photos && form.photos.length > 0 ? (
+              <View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
+                  {form.photos.map((p, idx) => (
+                    <View key={idx} style={styles.photoWrapper}>
+                      <Image 
+                        source={{ uri: `data:image/jpeg;base64,${p}` }} 
+                        style={styles.capturedPhotoThumb} 
+                        resizeMode="cover" 
+                      />
+                      <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removePhoto(idx)}>
+                        <Feather name="x" size={16} color="#fff" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  <TouchableOpacity style={styles.addMorePhotoBtn} onPress={capturePhoto}>
+                    <Feather name="plus" size={24} color={colors.primary} />
                   </TouchableOpacity>
-                )}
+                </ScrollView>
               </View>
             ) : (
-              <TouchableOpacity style={styles.uploadBox} onPress={handlePhotoOption}>
-                <Text style={styles.uploadIcon}>📷</Text>
-                <Text style={styles.uploadText}>ADD PHOTOS</Text>
-                <Text style={styles.uploadHint}>Camera or Gallery • Multiple allowed</Text>
+              <TouchableOpacity style={styles.captureBtn} onPress={capturePhoto} activeOpacity={0.8}>
+                <Feather name="camera" size={32} color={colors.primary} />
+                <Text style={styles.captureBtnText}>Tap to Add Photos</Text>
               </TouchableOpacity>
             )}
-          </View>
-        </SectionCard>
+          </SectionCard>
 
-        {/* ── ACTION BUTTONS ──────────────────────────────── */}
-        <TouchableOpacity
-          style={[styles.actionBtn, styles.syncSaveBtn, isSaving && { opacity: 0.7 }]}
-          onPress={() => handleSave(true)} disabled={isSaving} activeOpacity={0.85}
-        >
-          {isSaving ? <ActivityIndicator color={colors.white} /> : <Text style={styles.actionBtnText}>⟳  SAVE AND SYNC</Text>}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionBtn, styles.offlineSaveBtn, isSaving && { opacity: 0.7 }]}
-          onPress={() => handleSave(false)} disabled={isSaving} activeOpacity={0.85}
-        >
-          <Text style={[styles.actionBtnText, { color: colors.onSurface }]}>⊙  SAVE OFFLINE</Text>
-        </TouchableOpacity>
-
-        {/* ── LOCAL STORAGE CAPACITY ─────────────────────── */}
-        <View style={[styles.storageBanner, storageFull && styles.storageBannerFull]}>
-          <Text style={styles.storageIcon}>ℹ️</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.storageTitle}>LOCAL STORAGE CAPACITY</Text>
-            <View style={styles.storageBar}>
-              <View style={[styles.storageBarFill, { width: `${storagePercent}%`, backgroundColor: storageFull ? colors.error : colors.secondary }]} />
-            </View>
-            <Text style={styles.storageText}>
-              {storageInfo.used} MB / {storageInfo.total} MB used
-              {storageFull ? '  ⚠ Sync required to add more data.' : ''}
-            </Text>
-          </View>
         </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
-        <View style={{ height: spacing.xl }} />
-      </ScrollView>
-
-      {/* Bottom Tab Bar */}
-      <View style={styles.tabBar}>
-        <TouchableOpacity style={styles.tab} onPress={() => navigation.goBack()}>
-          <Text style={styles.tabIcon}>⊞</Text>
-          <Text style={styles.tabLabel}>Dashboard</Text>
+      {/* Fixed Bottom Action Bar */}
+      <View style={[styles.footerBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+        <TouchableOpacity
+          style={[styles.submitBtn, styles.draftBtn, { flex: 1 }, saving && { opacity: 0.7 }]}
+          onPress={() => handleSubmit(true)}
+          disabled={saving}
+          activeOpacity={0.8}
+        >
+          {saving
+            ? <ActivityIndicator color={colors.primary} />
+            : <Text style={styles.draftText}>SAVE AS DRAFT</Text>
+          }
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.tab, styles.tabActive]}>
-          <Text style={styles.tabIcon}>📋</Text>
-          <Text style={[styles.tabLabel, styles.tabLabelActive]}>Sync Status</Text>
+        <TouchableOpacity
+          style={[styles.submitBtn, { flex: 1 }, saving && { opacity: 0.7 }]}
+          onPress={() => handleSubmit(false)}
+          disabled={saving}
+          activeOpacity={0.8}
+        >
+          {saving
+            ? <ActivityIndicator color="#fff" />
+            : <Text style={styles.submitText}>SAVE OFFLINE</Text>
+          }
         </TouchableOpacity>
       </View>
+      {/* Add Master Data Modal */}
+      <Modal visible={!!addModal} transparent animationType="fade">
+        <View style={styles.modalBg}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Add New {addModal === 'gp' ? 'Gram Panchayat' : addModal}</Text>
+            <TextInput
+              style={[styles.input, { marginBottom: spacing.xl }]}
+              placeholder="Enter name"
+              value={addName}
+              onChangeText={setAddName}
+              autoFocus
+            />
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity style={styles.modalBtnCancel} onPress={() => { setAddModal(null); setAddName(''); }}>
+                <Text style={styles.modalBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalBtnSave} onPress={handleAddSubmit} disabled={addLoading}>
+                {addLoading ? <ActivityIndicator color="#fff" /> : <Text style={[styles.modalBtnText, { color: '#fff' }]}>Save</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
-};
+}
 
+// ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surface },
+  container: { flex: 1, backgroundColor: colors.surfaceContainerLow },
 
-  headerBar: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: spacing.md, paddingVertical: 12,
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md, paddingVertical: 14,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  signalIcon: { flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
-  bar: { width: 4, backgroundColor: colors.primary, borderRadius: 1 },
-  appName: { fontSize: 18, fontWeight: '700', color: colors.primary, letterSpacing: -0.3 },
-  cancelBtn: { padding: 8 },
-  cancelText: { fontSize: 14, color: colors.muted, fontWeight: '600' },
-  headerUnderline: { height: 2, backgroundColor: colors.primary },
+  backBtn: { width: 40, alignItems: 'flex-start' },
+  headerTitle: { ...typography.headlineSm, color: '#fff', letterSpacing: 0.3 },
 
-  offlineBar: { backgroundColor: colors.inverseNavy, paddingVertical: 8, paddingHorizontal: spacing.md },
-  offlineText: { fontSize: 11, color: '#fff', letterSpacing: 0.8, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
+  scroll: { flex: 1 },
+  body: { padding: spacing.md, gap: 0 },
 
-  scrollContent: { flex: 1, paddingHorizontal: spacing.md, paddingTop: spacing.md },
-  pageTitle: { ...typography.headlineMd, color: colors.onSurface, marginBottom: 4 },
-  pageSubtitle: { ...typography.bodyMd, color: colors.muted, marginBottom: spacing.md },
-
-  loadingBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: colors.surfaceContainerLow, borderRadius: radius.md, padding: spacing.sm, marginBottom: spacing.sm,
-  },
-  loadingText: { fontSize: 13, color: colors.muted },
-
+  // Section card
   sectionCard: {
-    backgroundColor: colors.white, borderRadius: radius.lg,
-    borderWidth: 1, borderColor: colors.outlineVariant,
-    borderLeftWidth: 4, padding: spacing.md, marginBottom: spacing.md,
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    borderLeftWidth: 4,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    ...shadows.sm,
   },
   sectionTag: {
-    fontSize: 11, fontWeight: '700', letterSpacing: 1.5,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    marginBottom: spacing.sm,
+    ...typography.labelSm, letterSpacing: 1.4,
+    marginBottom: 14,
+  },
+  hint: {
+    ...typography.labelSm, color: colors.placeholder, 
+    marginBottom: 12, marginTop: -6, fontStyle: 'italic',
   },
 
   formGroup: { marginBottom: spacing.md },
   fieldLabel: {
-    fontSize: 12, fontWeight: '700', color: colors.onSurfaceVariant,
-    letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 6,
+    ...typography.labelSm, color: colors.onSurfaceVariant,
+    textTransform: 'uppercase', marginBottom: 8,
   },
+
   input: {
-    height: 52, backgroundColor: colors.white,
-    borderWidth: 1, borderColor: colors.outlineVariant,
-    borderRadius: radius.md, paddingHorizontal: spacing.md,
-    fontSize: 16, color: colors.onSurface,
+    borderWidth: 1.5, borderColor: colors.outlineVariant,
+    borderRadius: radius.md, paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 14 : 12,
+    ...typography.bodyMd, color: colors.onSurface,
+    backgroundColor: colors.surfaceContainerLow,
   },
-  inputFocused: { borderWidth: 2, borderColor: colors.primary, backgroundColor: colors.surfaceContainerLow },
+  inputFocused: { borderColor: colors.primary, backgroundColor: colors.white, ...shadows.sm },
+
+  // GPS
+  gpsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  gpsBtn: {
+    width: 52, height: 52, borderRadius: radius.md,
+    borderWidth: 1.5, borderColor: colors.outlineVariant,
+    backgroundColor: colors.surfaceContainerLow, justifyContent: 'center', alignItems: 'center',
+  },
+
+  // GP code badge
+  gpCodeRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: colors.primaryContainer, borderRadius: radius.sm,
+    paddingHorizontal: 12, paddingVertical: 10, marginBottom: 8,
+  },
+  gpCodeLabel: { ...typography.labelSm, color: colors.primary, letterSpacing: 1 },
+  gpCodeValue: { ...typography.headlineSm, color: colors.primaryDark },
 
   // Phone
   phoneWrapper: {
-    flexDirection: 'row', alignItems: 'center', height: 52,
-    borderWidth: 1, borderColor: colors.outlineVariant, borderRadius: radius.md,
-    backgroundColor: colors.white, overflow: 'hidden',
+    flexDirection: 'row', borderWidth: 1.5, borderColor: colors.outlineVariant,
+    borderRadius: radius.md, overflow: 'hidden', backgroundColor: colors.surfaceContainerLow,
   },
-  phonePrefix: { paddingHorizontal: 14, height: '100%', justifyContent: 'center', backgroundColor: colors.surfaceContainerLow },
-  phonePrefixText: { fontSize: 16, fontWeight: '700', color: colors.primary },
-  phoneDivider: { width: 1, height: '60%', backgroundColor: colors.outlineVariant },
-  phoneInput: { flex: 1, fontSize: 16, color: colors.onSurface, paddingHorizontal: 14 },
-  phoneCount: { fontSize: 12, color: colors.muted, paddingRight: 12 },
+  phonePrefix: {
+    paddingHorizontal: 14, justifyContent: 'center',
+    backgroundColor: colors.outlineVariant,
+  },
+  phonePrefixText: { ...typography.bodyMd, fontWeight: '600', color: colors.onSurfaceVariant },
+  phoneDivider: { width: 0 },
+  phoneInput: {
+    flex: 1, paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 14 : 12,
+    ...typography.bodyMd, color: colors.onSurface,
+  },
 
-  // GPS
-  gpsRow: { flexDirection: 'row', gap: 8 },
-  gpsBtn: {
-    width: 52, height: 52, backgroundColor: colors.primary,
-    borderRadius: radius.md, justifyContent: 'center', alignItems: 'center',
+  // Photo Capture
+  captureBtn: {
+    height: 140,
+    borderWidth: 2, borderColor: colors.primaryContainer,
+    borderStyle: 'dashed', borderRadius: radius.lg,
+    backgroundColor: colors.surfaceContainerLow,
+    justifyContent: 'center', alignItems: 'center',
+    gap: spacing.sm,
   },
-  gpsBtnText: { fontSize: 22 },
-  coordsBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: colors.successBg, borderRadius: radius.md,
-    padding: spacing.sm, marginBottom: spacing.sm,
-    borderWidth: 1, borderColor: colors.success,
+  captureBtnText: {
+    ...typography.labelMd, color: colors.primary, fontWeight: '700',
   },
-  coordsLabel: { fontSize: 10, fontWeight: '700', color: colors.success, letterSpacing: 1 },
-  coordsValue: { fontSize: 13, color: colors.success, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
-
-  // Photo
-  uploadBox: {
-    borderWidth: 1.5, borderColor: colors.primary, borderStyle: 'dashed',
-    borderRadius: radius.lg, padding: spacing.lg,
-    alignItems: 'center', gap: 6, backgroundColor: colors.surfaceContainerLow,
+  photoScroll: {
+    marginTop: spacing.sm,
+    paddingBottom: spacing.sm,
   },
-  uploadIcon: { fontSize: 32 },
-  uploadText: { fontSize: 14, fontWeight: '700', color: colors.primary, letterSpacing: 1 },
-  uploadHint: { fontSize: 12, color: colors.muted },
-  photoPreview: { borderRadius: radius.md, overflow: 'hidden', borderWidth: 1, borderColor: colors.outlineVariant },
-  photoImage: { width: '100%', height: 180 },
-  photoMeta: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    padding: spacing.sm, backgroundColor: colors.inverseNavy,
-  },
-  photoName: { flex: 1, fontSize: 12, color: '#fff', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
-  removeBtn: { padding: 4 },
-  removeText: { fontSize: 12, color: '#fff', letterSpacing: 0.5 },
-  addPhotoBtn: {
-    marginTop: 8, borderWidth: 1, borderColor: colors.outlineVariant,
-    borderRadius: radius.md, padding: 10, alignItems: 'center',
-  },
-  addPhotoBtnText: { fontSize: 14, color: colors.primary, fontWeight: '600' },
-
-  photoHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
-  },
-  photoGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginTop: 6,
-  },
-  photoThumb: {
-    width: 95,
-    height: 115,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceContainer,
-    borderWidth: 1,
-    borderColor: colors.outlineVariant,
-    overflow: 'hidden',
+  photoWrapper: {
+    marginRight: spacing.md,
     position: 'relative',
   },
-  thumbImage: {
-    width: '100%',
-    height: 90,
-    backgroundColor: colors.surfaceContainerHigh,
-  },
-  thumbRemove: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  thumbRemoveText: {
-    color: colors.white,
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  thumbLabel: {
-    fontSize: 10,
-    color: colors.onSurfaceVariant,
-    textAlign: 'center',
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    fontWeight: '500',
-  },
-  photoGridAdd: {
-    width: 95,
-    height: 90,
+  capturedPhotoThumb: {
+    width: 120, height: 120,
     borderRadius: radius.md,
-    borderWidth: 1.5,
-    borderColor: colors.primary,
-    borderStyle: 'dashed',
-    backgroundColor: colors.surfaceContainerLow,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 4,
-  },
-  photoGridAddIcon: {
-    fontSize: 20,
-    color: colors.primary,
-    fontWeight: 'bold',
-  },
-  photoGridAddText: {
-    fontSize: 11,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-
-  // Step divider
-  stepRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: spacing.md, marginTop: 4 },
-  stepLine: { flex: 1, height: 1, backgroundColor: colors.outlineVariant },
-  stepLabel: { fontSize: 10, color: colors.muted, letterSpacing: 0.8, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
-
-  // Action Buttons
-  actionBtn: {
-    height: 56, borderRadius: radius.md,
-    justifyContent: 'center', alignItems: 'center', marginBottom: spacing.sm,
-  },
-  syncSaveBtn: { backgroundColor: colors.primary },
-  offlineSaveBtn: {
-    backgroundColor: colors.white, borderWidth: 2, borderColor: colors.primary,
-  },
-  actionBtnText: { color: colors.white, fontSize: 15, fontWeight: '700', letterSpacing: 1 },
-
-  // Storage
-  storageBanner: {
-    flexDirection: 'row', gap: 10, alignItems: 'flex-start',
-    backgroundColor: colors.surfaceContainerLow, borderRadius: radius.lg,
-    padding: spacing.md, marginBottom: spacing.md,
     borderWidth: 1, borderColor: colors.outlineVariant,
   },
-  storageBannerFull: { borderColor: colors.error, backgroundColor: colors.errorBg },
-  storageIcon: { fontSize: 16, marginTop: 2 },
-  storageTitle: { fontSize: 11, fontWeight: '700', color: colors.muted, letterSpacing: 1, marginBottom: 6 },
-  storageBar: { height: 6, backgroundColor: colors.outlineVariant, borderRadius: 3, marginBottom: 6, overflow: 'hidden' },
-  storageBarFill: { height: '100%', borderRadius: 3 },
-  storageText: { fontSize: 12, color: colors.onSurfaceVariant },
+  removePhotoBtn: {
+    position: 'absolute', top: -6, right: -6,
+    backgroundColor: colors.error,
+    borderRadius: 12, width: 24, height: 24,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2, borderColor: colors.white,
+  },
+  addMorePhotoBtn: {
+    width: 120, height: 120,
+    borderRadius: radius.md,
+    borderWidth: 2, borderColor: colors.primary,
+    borderStyle: 'dashed',
+    justifyContent: 'center', alignItems: 'center',
+    backgroundColor: colors.surfaceContainerLow,
+  },
 
-  // Tab Bar
-  tabBar: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: colors.outlineVariant, backgroundColor: colors.white },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: 10, gap: 2 },
-  tabActive: { borderTopWidth: 3, borderTopColor: colors.primary },
-  tabIcon: { fontSize: 20 },
-  tabLabel: { fontSize: 12, color: colors.muted, fontWeight: '500' },
-  tabLabelActive: { color: colors.primary, fontWeight: '700' },
+  footerBar: {
+    flexDirection: 'row', gap: 12,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    backgroundColor: colors.surfaceContainerLow,
+    borderTopWidth: 1, borderTopColor: colors.outlineVariant,
+  },
+  submitBtn: {
+    flex: 1,
+    backgroundColor: colors.primary, borderRadius: radius.lg,
+    paddingVertical: 18, alignItems: 'center',
+    ...shadows.primary,
+  },
+  submitText: {
+    color: '#fff', ...typography.labelMd, fontWeight: '800', letterSpacing: 1.2,
+  },
+  draftBtn: {
+    backgroundColor: colors.white,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    ...shadows.sm,
+  },
+  draftText: {
+    color: colors.primary, ...typography.labelMd, fontWeight: '800', letterSpacing: 1.2,
+  },
+
+  // Modal
+  modalBg: { flex: 1, backgroundColor: 'rgba(15,23,42,0.4)', justifyContent: 'center', alignItems: 'center' },
+  modalCard: { width: '85%', backgroundColor: colors.white, borderRadius: radius.lg, padding: spacing.xl, ...shadows.lg },
+  modalTitle: { ...typography.headlineSm, marginBottom: spacing.lg, textTransform: 'capitalize', color: colors.onSurface },
+  modalBtnRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.md },
+  modalBtnCancel: { paddingVertical: spacing.sm, paddingHorizontal: spacing.lg },
+  modalBtnSave: { backgroundColor: colors.primary, paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, borderRadius: radius.md, minWidth: 80, alignItems: 'center' },
+  modalBtnText: { ...typography.bodyMd, fontWeight: '600', color: colors.primary },
 });
-
-export default SurveyFormScreen;

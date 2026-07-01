@@ -3,48 +3,456 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GP Survey - Admin Dashboard</title>
-  <link rel="stylesheet" href="css/style.css">
+  <title>GP Survey — Admin Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #1e3a5f;
+      --primary-light: #2d5a8e;
+      --accent: #3b82f6;
+      --success: #16a34a;
+      --warning: #d97706;
+      --danger: #dc2626;
+      --surface: #f8fafc;
+      --card: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --muted: #64748b;
+      --radius: 12px;
+    }
+    body { font-family: 'Inter', sans-serif; background: var(--surface); color: var(--text); min-height: 100vh; }
+
+    /* NAV */
+    nav {
+      background: var(--primary); padding: 0 32px;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 60px; position: sticky; top: 0; z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+    }
+    nav h1 { color: #fff; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; }
+    .nav-links { display: flex; gap: 8px; }
+    .nav-links a {
+      color: rgba(255,255,255,0.75); text-decoration: none; padding: 8px 16px;
+      border-radius: 8px; font-size: 14px; font-weight: 500; transition: all 0.15s;
+    }
+    .nav-links a:hover, .nav-links a.active { background: rgba(255,255,255,0.15); color: #fff; }
+
+    /* LAYOUT */
+    .container { max-width: 1400px; margin: 0 auto; padding: 28px 24px; }
+
+    /* STAT CARDS */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .stat-card {
+      background: var(--card); border-radius: var(--radius);
+      padding: 20px 24px; border: 1px solid var(--border);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .stat-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
+    .stat-value { font-size: 32px; font-weight: 700; color: var(--primary); margin-top: 4px; }
+    .stat-card.green .stat-value { color: var(--success); }
+    .stat-card.yellow .stat-value { color: var(--warning); }
+
+    /* FILTER PANEL */
+    .filter-panel {
+      background: var(--card); border-radius: var(--radius);
+      border: 1px solid var(--border); padding: 20px 24px;
+      margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .filter-panel h3 { font-size: 14px; font-weight: 600; color: var(--muted); margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.8px; }
+    .filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: end; }
+    .filter-group label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.6px; }
+    .filter-group select, .filter-group input {
+      width: 100%; height: 40px; border: 1px solid var(--border);
+      border-radius: 8px; padding: 0 12px; font-size: 14px;
+      font-family: 'Inter', sans-serif; color: var(--text); background: var(--surface);
+      outline: none; transition: border-color 0.15s;
+    }
+    .filter-group select:focus, .filter-group input:focus { border-color: var(--accent); }
+    .filter-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; align-items: center; }
+
+    /* BUTTONS */
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px;
+      border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;
+      border: none; text-decoration: none; transition: all 0.15s; white-space: nowrap;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-light); }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover { background: #15803d; }
+    .btn-outline { background: transparent; border: 2px solid var(--border); color: var(--muted); }
+    .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    /* EXPORT LOADER */
+    .export-status {
+      display: none; align-items: center; gap: 10px;
+      padding: 10px 16px; background: #eff6ff; border-radius: 8px;
+      border: 1px solid #bfdbfe; font-size: 14px; color: var(--primary);
+    }
+    .export-status.show { display: flex; }
+    .spinner {
+      width: 18px; height: 18px; border: 2px solid #bfdbfe;
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* TABLE CARD */
+    .card {
+      background: var(--card); border-radius: var(--radius);
+      border: 1px solid var(--border); overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 24px; border-bottom: 1px solid var(--border);
+      flex-wrap: wrap; gap: 10px;
+    }
+    .card-header h2 { font-size: 16px; font-weight: 700; color: var(--text); }
+    .table-wrap { overflow-x: auto; max-height: 60vh; overflow-y: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      background: var(--primary); color: #fff; padding: 12px 14px;
+      text-align: left; font-weight: 600; font-size: 11px;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      white-space: nowrap; position: sticky; top: 0; z-index: 2;
+    }
+    tbody tr:nth-child(even) { background: #f0f7ff; }
+    tbody tr:hover { background: #dbeafe; }
+    tbody td { padding: 10px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 99px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.4px;
+    }
+    .badge-yes { background: #d1fae5; color: #065f46; }
+    .badge-draft { background: #fef3c7; color: #92400e; }
+    .badge-no  { background: #fee2e2; color: #991b1b; }
+
+    /* EMPTY STATE */
+    .empty-state { padding: 60px 24px; text-align: center; color: var(--muted); }
+    .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-state p { font-size: 16px; font-weight: 600; }
+
+    /* PAGINATION */
+    .pagination { display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); }
+  </style>
 </head>
 <body>
-  <nav class="navbar">
-    <h1>GP Survey Admin</h1>
+  <nav>
+    <h1>🗺 GP Survey Admin</h1>
     <div class="nav-links">
-      <a href="index.html">Dashboard</a>
+      <a href="index.html" class="active">Dashboard</a>
       <a href="master.html">Master Data</a>
       <a href="users.html">Surveyors</a>
     </div>
   </nav>
 
   <div class="container">
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Total Surveys</div>
+        <div class="stat-value" id="statTotal">—</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-label">Completed</div>
+        <div class="stat-value" id="statSynced">—</div>
+      </div>
+      <div class="stat-card yellow">
+        <div class="stat-label">Drafts</div>
+        <div class="stat-value" id="statDraft">—</div>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-panel">
+      <h3>🔍 Filter & Export</h3>
+      <div class="filter-grid">
+        <div class="filter-group">
+          <label>State</label>
+          <select id="filterState"><option value="">All States</option></select>
+        </div>
+        <div class="filter-group">
+          <label>District</label>
+          <select id="filterDistrict" disabled><option value="">All Districts</option></select>
+        </div>
+        <div class="filter-group">
+          <label>Block</label>
+          <select id="filterBlock" disabled><option value="">All Blocks</option></select>
+        </div>
+        <div class="filter-group">
+          <label>Status</label>
+          <select id="filterStatus">
+            <option value="">All</option>
+            <option value="YES">Completed</option>
+            <option value="DRAFT">Draft</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Date From</label>
+          <input type="date" id="filterDateFrom">
+        </div>
+        <div class="filter-group">
+          <label>Date To</label>
+          <input type="date" id="filterDateTo">
+        </div>
+      </div>
+      <div class="filter-actions">
+        <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
+        <button class="btn btn-outline" onclick="clearFilters()">Clear</button>
+        <div class="export-status" id="exportStatus">
+          <div class="spinner"></div>
+          <span id="exportMsg">Generating Excel...</span>
+        </div>
+        <button class="btn btn-success" id="exportBtn" onclick="exportExcel()">
+          ⬇ Export to Excel
+        </button>
+      </div>
+    </div>
+
+    <!-- Table -->
     <div class="card">
       <div class="card-header">
-        <h2>Recent Surveys</h2>
-        <a href="/api/survey/export" class="btn btn-success" target="_blank">Export to Excel</a>
+        <h2>Survey Records</h2>
+        <span id="rowCountBadge" style="font-size:13px;color:var(--muted)"></span>
       </div>
-      <div style="overflow-x: auto;">
+      <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Surveyor</th>
-              <th>Respondent Name</th>
-              <th>Location</th>
-              <th>Date</th>
+              <th>#</th>
+              <th>State</th>
+              <th>District</th>
+              <th>Block</th>
+              <th>Gram Panchayat</th>
+              <th>GP Code</th>
+              <th>Survey Date</th>
+              <th>Status</th>
+              <th>Original Location</th>
+              <th>Infra Status</th>
+              <th>Current Location</th>
+              <th>Perm/Temp</th>
+              <th>Proposed Building</th>
+              <th>Sarpanch</th>
+              <th>Contact</th>
             </tr>
           </thead>
           <tbody id="surveyTableBody">
-            <tr><td colspan="5">Loading surveys...</td></tr>
+            <tr><td colspan="15" style="text-align:center;padding:40px;color:var(--muted)">Loading...</td></tr>
           </tbody>
         </table>
+      </div>
+      <div class="pagination">
+        <span id="pageInfo"></span>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-outline" onclick="prevPage()" id="prevBtn">← Prev</button>
+          <button class="btn btn-outline" onclick="nextPage()" id="nextBtn">Next →</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <script src="js/admin.js"></script>
   <script>
+    const API = '';
+    let allSurveys = [], filtered = [], page = 1, pageSize = 50;
+    let filterStateId = '', filterDistrictId = '', filterBlockId = '';
+
+    // ── Load master data for filter dropdowns ──────────────────────────────────
+    async function loadMasterFilters() {
+      try {
+        const [statesRes, districtsRes] = await Promise.all([
+          fetch(API + '/api/master/states'),
+          fetch(API + '/api/master/districts'),
+        ]);
+        const states = await statesRes.json();
+        const allDistricts = await districtsRes.json();
+
+        const stateEl = document.getElementById('filterState');
+        states.forEach(s => {
+          stateEl.innerHTML += `<option value="${s.id}">${s.name}</option>`;
+        });
+
+        stateEl.addEventListener('change', async () => {
+          filterStateId = stateEl.value;
+          filterDistrictId = ''; filterBlockId = '';
+          const distEl = document.getElementById('filterDistrict');
+          const blockEl = document.getElementById('filterBlock');
+          distEl.innerHTML = '<option value="">All Districts</option>';
+          blockEl.innerHTML = '<option value="">All Blocks</option>';
+          distEl.disabled = !filterStateId;
+          blockEl.disabled = true;
+          if (filterStateId) {
+            const dists = allDistricts.filter(d => String(d.stateId) === String(filterStateId));
+            dists.forEach(d => { distEl.innerHTML += `<option value="${d.id}">${d.name}</option>`; });
+          }
+        });
+
+        document.getElementById('filterDistrict').addEventListener('change', async function() {
+          filterDistrictId = this.value;
+          filterBlockId = '';
+          const blockEl = document.getElementById('filterBlock');
+          blockEl.innerHTML = '<option value="">All Blocks</option>';
+          blockEl.disabled = !filterDistrictId;
+          if (filterDistrictId) {
+            const res = await fetch(API + `/api/master/blocks?districtId=${filterDistrictId}`);
+            const blocks = await res.json();
+            blocks.forEach(b => { blockEl.innerHTML += `<option value="${b.id}">${b.name}</option>`; });
+          }
+        });
+
+        document.getElementById('filterBlock').addEventListener('change', function() {
+          filterBlockId = this.value;
+        });
+      } catch(e) { console.warn('Master filter load failed', e); }
+    }
+
+    // ── Load stats ─────────────────────────────────────────────────────────────
+    async function loadStats() {
+      try {
+        const res = await fetch(API + '/api/survey/count');
+        const data = await res.json();
+        document.getElementById('statTotal').textContent = data.total ?? '—';
+        document.getElementById('statSynced').textContent = data.synced ?? '—';
+        document.getElementById('statDraft').textContent = data.draft ?? '—';
+      } catch(e) {}
+    }
+
+    // ── Load table ─────────────────────────────────────────────────────────────
+    async function applyFilters() {
+      const params = new URLSearchParams();
+      if (filterStateId)    params.set('stateId', filterStateId);
+      if (filterDistrictId) params.set('districtId', filterDistrictId);
+      if (filterBlockId)    params.set('blockId', filterBlockId);
+      const status   = document.getElementById('filterStatus').value;
+      const dateFrom = document.getElementById('filterDateFrom').value;
+      const dateTo   = document.getElementById('filterDateTo').value;
+      if (status)   params.set('surveyDone', status);
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo)   params.set('dateTo', dateTo);
+
+      const tbody = document.getElementById('surveyTableBody');
+      tbody.innerHTML = '<tr><td colspan="15" style="text-align:center;padding:40px;color:var(--muted)">Loading...</td></tr>';
+      try {
+        const res = await fetch(API + '/api/survey/list?' + params.toString());
+        allSurveys = await res.json();
+        page = 1;
+        renderTable();
+        loadStats();
+      } catch(e) {
+        tbody.innerHTML = '<tr><td colspan="15" style="color:red;padding:20px">Failed to load surveys.</td></tr>';
+      }
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('surveyTableBody');
+      const start = (page - 1) * pageSize;
+      const paginated = allSurveys.slice(start, start + pageSize);
+      document.getElementById('rowCountBadge').textContent = `${allSurveys.length} records`;
+      document.getElementById('pageInfo').textContent = `Showing ${start + 1}–${Math.min(start + pageSize, allSurveys.length)} of ${allSurveys.length}`;
+      document.getElementById('prevBtn').disabled = page <= 1;
+      document.getElementById('nextBtn').disabled = start + pageSize >= allSurveys.length;
+
+      if (!paginated.length) {
+        tbody.innerHTML = '<tr><td colspan="15"><div class="empty-state"><div class="icon">📋</div><p>No surveys found.</p></div></td></tr>';
+        return;
+      }
+      tbody.innerHTML = paginated.map((s, i) => {
+        const statusBadge = s.surveyDone === 'DRAFT'
+          ? `<span class="badge badge-draft">DRAFT</span>`
+          : s.surveyDone === 'YES'
+          ? `<span class="badge badge-yes">DONE</span>`
+          : `<span class="badge badge-no">${s.surveyDone || '—'}</span>`;
+        return `<tr>
+          <td>${start + i + 1}</td>
+          <td>${s.stateName || '—'}</td>
+          <td>${s.districtName || '—'}</td>
+          <td>${s.blockName || '—'}</td>
+          <td><strong>${s.gramPanchayatName || '—'}</strong></td>
+          <td>${s.gramPanchayatCode || '—'}</td>
+          <td>${s.surveyDate || '—'}</td>
+          <td>${statusBadge}</td>
+          <td>${s.origLocationType || '—'}</td>
+          <td>${s.origInfraStatus || '—'}</td>
+          <td>${s.currentLocation || '—'}</td>
+          <td>${s.currentPermTemp || '—'}</td>
+          <td>${s.proposedBuilding || '—'}</td>
+          <td>${s.sarpanchName || '—'}</td>
+          <td>${s.sarpanchContact || '—'}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function prevPage() { if (page > 1) { page--; renderTable(); } }
+    function nextPage() { if ((page - 1) * pageSize + pageSize < allSurveys.length) { page++; renderTable(); } }
+
+    function clearFilters() {
+      document.getElementById('filterState').value = '';
+      document.getElementById('filterDistrict').innerHTML = '<option value="">All Districts</option>';
+      document.getElementById('filterDistrict').disabled = true;
+      document.getElementById('filterBlock').innerHTML = '<option value="">All Blocks</option>';
+      document.getElementById('filterBlock').disabled = true;
+      document.getElementById('filterStatus').value = '';
+      document.getElementById('filterDateFrom').value = '';
+      document.getElementById('filterDateTo').value = '';
+      filterStateId = ''; filterDistrictId = ''; filterBlockId = '';
+      applyFilters();
+    }
+
+    // ── Export with Loader ─────────────────────────────────────────────────────
+    async function exportExcel() {
+      const params = new URLSearchParams();
+      if (filterStateId)    params.set('stateId', filterStateId);
+      if (filterDistrictId) params.set('districtId', filterDistrictId);
+      if (filterBlockId)    params.set('blockId', filterBlockId);
+      const status   = document.getElementById('filterStatus').value;
+      const dateFrom = document.getElementById('filterDateFrom').value;
+      const dateTo   = document.getElementById('filterDateTo').value;
+      if (status)   params.set('surveyDone', status);
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo)   params.set('dateTo', dateTo);
+
+      const btn = document.getElementById('exportBtn');
+      const statusEl = document.getElementById('exportStatus');
+      const msgEl = document.getElementById('exportMsg');
+
+      btn.disabled = true;
+      statusEl.classList.add('show');
+      msgEl.textContent = 'Generating Excel…';
+
+      try {
+        const res = await fetch(API + '/api/survey/export?' + params.toString());
+        if (!res.ok) throw new Error('Export failed: ' + res.status);
+        const rowCount = res.headers.get('X-Row-Count');
+        msgEl.textContent = `Preparing download (${rowCount || '?'} rows)…`;
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `GP_Survey_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        msgEl.textContent = '✓ Download complete!';
+        setTimeout(() => { statusEl.classList.remove('show'); }, 2500);
+      } catch(e) {
+        msgEl.textContent = '✗ Export failed. Try again.';
+        statusEl.style.background = '#fee2e2';
+        statusEl.style.borderColor = '#fecaca';
+        setTimeout(() => { statusEl.classList.remove('show'); statusEl.style = ''; }, 3000);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ── Init ───────────────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', () => {
-      fetchSurveys();
+      loadMasterFilters();
+      loadStats();
+      applyFilters();
     });
   </script>
 </body>

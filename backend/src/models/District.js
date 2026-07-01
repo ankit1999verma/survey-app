@@ -22,6 +22,9 @@ const District = sequelize.define('District', {
   },
 }, {
   timestamps: true,
+  indexes: [
+    { fields: ['stateId'] }
+  ]
 });
 
 State.hasMany(District, { foreignKey: 'stateId', onDelete: 'CASCADE' });

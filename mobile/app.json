@@ -1,10 +1,15 @@
 {
   "expo": {
-    "name": "GP Survey Pro",
+    "name": "BSNL GP Survey",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#022144"
+    },
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
@@ -46,7 +51,9 @@
         {
           "locationWhenInUsePermission": "Allow GP Survey to access location for GPS coordinate capture."
         }
-      ]
+      ],
+      "expo-sqlite",
+      "expo-sharing"
     ]
   }
 }

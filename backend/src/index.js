@@ -29,7 +29,7 @@ app.get('/', (req, res) => {
 });
 
 // Database sync and server start
-sequelize.sync({ alter: true }) // use alter to update schema without dropping
+sequelize.sync({ alter: false })
   .then(() => {
     console.log('Database synced successfully');
     app.listen(PORT, () => {

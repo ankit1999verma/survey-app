@@ -1,29 +1,31 @@
-// Field Ops Precision — Design Tokens from DESIGN.md
+// Field Ops Premium — Design Tokens
+import { Platform } from 'react-native';
+
 export const colors = {
-  primary: '#0052CC',
-  primaryDark: '#003d9b',
-  primaryContainer: '#e8edff',
-  secondary: '#FF8B00',
-  secondaryDark: '#914d00',
-  success: '#36B37E',
-  successBg: '#E3FCEF',
-  error: '#ba1a1a',
-  errorBg: '#ffdad6',
-  surface: '#f9f9ff',
-  surfaceContainer: '#e8edff',
-  surfaceContainerLow: '#f1f3ff',
+  primary: '#2563EB',        // Modern vibrant blue
+  primaryDark: '#1D4ED8',
+  primaryContainer: '#EFF6FF',
+  secondary: '#F59E0B',      // Amber
+  secondaryDark: '#D97706',
+  success: '#10B981',        // Emerald
+  successBg: '#D1FAE5',
+  error: '#EF4444',          // Red
+  errorBg: '#FEE2E2',
+  surface: '#FFFFFF',
+  surfaceContainer: '#F8FAFC',
+  surfaceContainerLow: '#F1F5F9',
   white: '#FFFFFF',
-  navy: '#172B4D',
-  onSurface: '#041b3c',
-  onSurfaceVariant: '#434654',
-  outline: '#737685',
-  outlineVariant: '#c3c6d6',
-  inverseNavy: '#1d3052',
-  pending: '#FFF0B3',
-  pendingBorder: '#FF8B00',
-  bg: '#F4F5F7',
-  placeholder: '#7A869A',
-  muted: '#5E6C84',
+  navy: '#0F172A',           // Slate 900
+  onSurface: '#1E293B',      // Slate 800
+  onSurfaceVariant: '#475569', // Slate 600
+  outline: '#CBD5E1',        // Slate 300
+  outlineVariant: '#E2E8F0', // Slate 200
+  inverseNavy: '#1E293B',
+  pending: '#FEF3C7',
+  pendingBorder: '#F59E0B',
+  bg: '#F8FAFC',
+  placeholder: '#94A3B8',    // Slate 400
+  muted: '#64748B',          // Slate 500
 };
 
 export const spacing = {
@@ -36,18 +38,42 @@ export const spacing = {
 };
 
 export const radius = {
-  sm: 2,
-  md: 4,
-  lg: 8,
-  xl: 12,
+  sm: 6,
+  md: 10,
+  lg: 16,
+  xl: 24,
+  xxl: 32,
 };
 
 export const typography = {
-  displayLg: { fontSize: 32, fontWeight: '700', lineHeight: 40, letterSpacing: -0.5 },
-  headlineMd: { fontSize: 24, fontWeight: '600', lineHeight: 32 },
-  headlineSm: { fontSize: 20, fontWeight: '600', lineHeight: 28 },
-  bodyLg: { fontSize: 18, fontWeight: '400', lineHeight: 26 },
-  bodyMd: { fontSize: 16, fontWeight: '400', lineHeight: 24 },
-  labelMd: { fontSize: 14, fontWeight: '500', lineHeight: 20, letterSpacing: 0.7 },
-  labelSm: { fontSize: 12, fontWeight: '700', lineHeight: 16, letterSpacing: 1 },
+  displayLg: { fontFamily: 'HankenGrotesk-Bold', fontSize: 32, lineHeight: 40, letterSpacing: -0.5 },
+  headlineMd: { fontFamily: 'HankenGrotesk-SemiBold', fontSize: 24, lineHeight: 32 },
+  headlineSm: { fontFamily: 'HankenGrotesk-SemiBold', fontSize: 20, lineHeight: 28 },
+  bodyLg: { fontFamily: 'HankenGrotesk-Regular', fontSize: 18, lineHeight: 26 },
+  bodyMd: { fontFamily: 'HankenGrotesk-Regular', fontSize: 16, lineHeight: 24 },
+  labelMd: { fontFamily: 'HankenGrotesk-Medium', fontSize: 14, lineHeight: 20, letterSpacing: 0.5 },
+  labelSm: { fontFamily: 'HankenGrotesk-Bold', fontSize: 12, lineHeight: 16, letterSpacing: 0.8 },
+};
+
+export const shadows = {
+  sm: Platform.select({
+    ios: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 },
+    android: { elevation: 2 },
+    web: { boxShadow: '0 1px 2px 0 rgba(15, 23, 42, 0.05)' }
+  }),
+  md: Platform.select({
+    ios: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 8 },
+    android: { elevation: 4 },
+    web: { boxShadow: '0 4px 6px -1px rgba(15, 23, 42, 0.08)' }
+  }),
+  lg: Platform.select({
+    ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 15 },
+    android: { elevation: 8 },
+    web: { boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }
+  }),
+  primary: Platform.select({
+    ios: { shadowColor: colors.primary, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12 },
+    android: { elevation: 8, shadowColor: colors.primary },
+    web: { boxShadow: '0 10px 15px -3px rgba(37, 99, 235, 0.3)' }
+  }),
 };
