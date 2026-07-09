@@ -35,6 +35,7 @@ async function initSchema() {
     CREATE TABLE IF NOT EXISTS surveys (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       uuid TEXT UNIQUE NOT NULL,
+      serverId INTEGER,
 
       -- Meta / GP Identity
       stateId   INTEGER, stateName   TEXT,
@@ -119,7 +120,8 @@ async function initSchema() {
       id INTEGER PRIMARY KEY,
       name TEXT NOT NULL,
       code TEXT,
-      blockId INTEGER
+      blockId INTEGER NOT NULL,
+      FOREIGN KEY (blockId) REFERENCES master_blocks(id)
     );
 
     -- Keep old table for backward compat during migration
@@ -129,6 +131,10 @@ async function initSchema() {
       updatedAt TEXT DEFAULT (datetime('now'))
     );
   `);
+
+  try {
+    await db.execAsync("ALTER TABLE surveys ADD COLUMN serverId INTEGER;");
+  } catch (e) {}
 }
 
 // ── Survey CRUD ───────────────────────────────────────────────────────────────
@@ -203,7 +209,7 @@ export async function insertSurvey(survey) {
       gpBhawanAvailable, gpBhawanInfraStatus, gpBhawanEnergyMeter, gpBhawanEarthing, gpBhawanSolar, gpBhawanLat, gpBhawanLong,
       proposedBuilding, proposedRackSpace, proposedLat, proposedLong,
       proposedEnergyMeter, proposedEarthing, proposedSolar, proposedPoleLength, proposedPoleLat, proposedPoleLong, proposedRemarks,
-      sarpanchName, sarpanchContact, photoBase64, userId, synced, syncedAt
+      sarpanchName, sarpanchContact, photoBase64, userId, synced, syncedAt, createdAt, serverId
     ) VALUES (
       $uuid, $stateId, $stateName, $districtId, $districtName, $blockId, $blockName,
       $gramPanchayatId, $gramPanchayatName, $gramPanchayatCode,
@@ -213,7 +219,7 @@ export async function insertSurvey(survey) {
       $gpBhawanAvailable, $gpBhawanInfraStatus, $gpBhawanEnergyMeter, $gpBhawanEarthing, $gpBhawanSolar, $gpBhawanLat, $gpBhawanLong,
       $proposedBuilding, $proposedRackSpace, $proposedLat, $proposedLong,
       $proposedEnergyMeter, $proposedEarthing, $proposedSolar, $proposedPoleLength, $proposedPoleLat, $proposedPoleLong, $proposedRemarks,
-      $sarpanchName, $sarpanchContact, $photoBase64, $userId, $synced, $syncedAt
+      $sarpanchName, $sarpanchContact, $photoBase64, $userId, $synced, $syncedAt, $createdAt, $serverId
     )`,
     {
       $uuid: survey.uuid,
@@ -246,6 +252,8 @@ export async function insertSurvey(survey) {
       $userId: survey.userId ?? null,
       $synced: survey.synced ?? 0,
       $syncedAt: survey.syncedAt ?? null,
+      $createdAt: survey.createdAt ?? new Date().toISOString(),
+      $serverId: survey.id ?? null,
     }
   );
   return result;
@@ -282,7 +290,7 @@ export async function getAllSurveys() {
     return data.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
   }
   const d = await getDB();
-  return d.getAllAsync('SELECT * FROM surveys ORDER BY createdAt DESC');
+  return d.getAllAsync('SELECT * FROM surveys ORDER BY COALESCE(serverId, 999999999) DESC, createdAt DESC, id DESC');
 }
 
 export async function markSynced(uuids) {
@@ -339,6 +347,13 @@ export async function getLocalSurveyMaxDate() {
   const max = await d.getFirstAsync('SELECT MAX(createdAt) as maxDate FROM surveys');
   let dateStr = max?.maxDate || '1970-01-01T00:00:00';
   return dateStr.replace(' ', 'T');
+}
+
+export async function getLocalSurveyMaxId() {
+  if (isWeb) return 0;
+  const d = await getDB();
+  const max = await d.getFirstAsync('SELECT MAX(serverId) as maxId FROM surveys');
+  return max?.maxId || 0;
 }
 
 // ── Master data (normalized tables) ──────────────────────────────────────────
@@ -451,21 +466,58 @@ async function executeSaveChunk({ states, districts, blocks, gramPanchayats }) {
   });
 }
 
-/** Load all master data from normalized tables */
+/** Fetch specific levels of master data */
+export async function getStates() {
+  if (isWeb) {
+    const data = await getWebItem('master_data');
+    return data ? JSON.parse(data).states || [] : [];
+  }
+  const d = await getDB();
+  return await d.getAllAsync('SELECT * FROM master_states ORDER BY name ASC');
+}
+
+export async function getDistricts(stateId) {
+  if (!stateId) return [];
+  if (isWeb) {
+    const data = await getWebItem('master_data');
+    return data ? (JSON.parse(data).districts || []).filter(d => d.stateId == stateId) : [];
+  }
+  const d = await getDB();
+  return await d.getAllAsync('SELECT * FROM master_districts WHERE stateId = ? ORDER BY name ASC', [stateId]);
+}
+
+export async function getBlocks(districtId) {
+  if (!districtId) return [];
+  if (isWeb) {
+    const data = await getWebItem('master_data');
+    return data ? (JSON.parse(data).blocks || []).filter(b => b.districtId == districtId) : [];
+  }
+  const d = await getDB();
+  return await d.getAllAsync('SELECT * FROM master_blocks WHERE districtId = ? ORDER BY name ASC', [districtId]);
+}
+
+export async function getGramPanchayats(blockId) {
+  if (!blockId) return [];
+  if (isWeb) {
+    const data = await getWebItem('master_data');
+    return data ? (JSON.parse(data).gramPanchayats || []).filter(g => g.blockId == blockId) : [];
+  }
+  const d = await getDB();
+  return await d.getAllAsync('SELECT * FROM master_gps WHERE blockId = ? ORDER BY name ASC', [blockId]);
+}
+
+/** Legacy (Kept for syncManager but removed GP bulk load) */
 export async function loadMasterData() {
   if (isWeb) {
     const data = await getWebItem('master_data');
     return data ? JSON.parse(data) : null;
   }
   const d = await getDB();
-  const [states, districts, blocks, gramPanchayats] = await Promise.all([
-    d.getAllAsync('SELECT * FROM master_states'),
-    d.getAllAsync('SELECT * FROM master_districts'),
-    d.getAllAsync('SELECT * FROM master_blocks'),
-    d.getAllAsync('SELECT * FROM master_gps'),
-  ]);
-  if (!states.length && !blocks.length) return null;
-  return { states, districts, blocks, gramPanchayats };
+  // Return empty arrays for blocks/GPs to prevent out-of-memory
+  const states = await d.getAllAsync('SELECT * FROM master_states ORDER BY name ASC');
+  const districts = await d.getAllAsync('SELECT * FROM master_districts ORDER BY name ASC');
+  if (!states.length) return null;
+  return { states, districts, blocks: [], gramPanchayats: [] };
 }
 
 /** Legacy — kept for backward compat, now delegates to saveMasterChunk */

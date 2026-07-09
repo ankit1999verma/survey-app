@@ -12,7 +12,8 @@ import { AuthContext } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
 import WheelPickerField from '../components/WheelPickerField';
 import api from '../utils/api';
-import { saveSurveyOffline, getMasterData, syncMasterData } from '../utils/syncManager';
+import { saveSurveyOffline, syncMasterData } from '../utils/syncManager';
+import { getStates, getDistricts, getBlocks, getGramPanchayats } from '../utils/localDB';
 import { colors, spacing, radius, typography, shadows } from '../theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -219,27 +220,32 @@ export default function SurveyFormScreen({ route, navigation }) {
   const gpRef = React.useRef(null);
   const vendorRef = React.useRef(null);
 
-  // Derived lists
-  const states = useMemo(() => masterData?.states ?? [], [masterData]);
-  const districts = useMemo(() => form.stateId
-    ? (masterData?.districts ?? []).filter(d => d.stateId == form.stateId) : [], 
-    [masterData, form.stateId]
-  );
-  const blocks = useMemo(() => form.districtId
-    ? (masterData?.blocks ?? []).filter(b => b.districtId == form.districtId) : [],
-    [masterData, form.districtId]
-  );
-  const gps = useMemo(() => form.blockId
-    ? (masterData?.gramPanchayats ?? []).filter(g => g.blockId == form.blockId) : [],
-    [masterData, form.blockId]
-  );
+  const [states, setStates] = useState([]);
+  const [districts, setDistricts] = useState([]);
+  const [blocks, setBlocks] = useState([]);
+  const [gps, setGps] = useState([]);
+
+  useEffect(() => {
+    if (form.stateId) getDistricts(form.stateId).then(setDistricts);
+    else setDistricts([]);
+  }, [form.stateId]);
+
+  useEffect(() => {
+    if (form.districtId) getBlocks(form.districtId).then(setBlocks);
+    else setBlocks([]);
+  }, [form.districtId]);
+
+  useEffect(() => {
+    if (form.blockId) getGramPanchayats(form.blockId).then(setGps);
+    else setGps([]);
+  }, [form.blockId]);
 
   useEffect(() => {
     (async () => {
-      let md = null;
+      let st = [];
       try {
-        md = await getMasterData();
-        if (md) setMD(md);
+        st = await getStates();
+        setStates(st);
       } catch (e) {
         console.log('Failed to load local master data', e);
       }
@@ -250,12 +256,20 @@ export default function SurveyFormScreen({ route, navigation }) {
           const draft = await AsyncStorage.getItem('unsaved_survey_draft');
           if (draft) {
             draftParsed = JSON.parse(draft);
-            if (draftParsed) setForm(draftParsed);
+            if (draftParsed) {
+              if (draftParsed.uuid) {
+                // If it has a UUID, it's a corrupted draft from an old edited survey! Delete it.
+                AsyncStorage.removeItem('unsaved_survey_draft').catch(()=>{});
+                draftParsed = null;
+              } else {
+                setForm(draftParsed);
+              }
+            }
           }
         } catch(e) {}
 
         // Auto-detect State and District from GPS if not already selected
-        if (md?.states?.length > 0 && !draftParsed?.stateId) {
+        if (st?.length > 0 && !draftParsed?.stateId) {
           try {
             const { status } = await Location.requestForegroundPermissionsAsync();
             if (status === 'granted') {
@@ -267,12 +281,13 @@ export default function SurveyFormScreen({ route, navigation }) {
               if (geocode && geocode.length > 0) {
                 const { region, subregion, city } = geocode[0];
                 if (region) {
-                  const s = md.states.find(x => x.name.toLowerCase() === region.toLowerCase());
+                  const s = st.find(x => x.name.toLowerCase() === region.toLowerCase());
                   if (s) {
+                    const dists = await getDistricts(s.id);
                     const distStr = subregion || city;
                     let d = null;
                     if (distStr) {
-                      d = md.districts.find(x => x.stateId === s.id && x.name.toLowerCase() === distStr.toLowerCase());
+                      d = dists.find(x => x.name.toLowerCase() === distStr.toLowerCase());
                     }
                     setForm(f => {
                       if (f.stateId) return f; // User manually selected in the meantime
@@ -290,6 +305,9 @@ export default function SurveyFormScreen({ route, navigation }) {
             console.log('Auto GPS detection failed', e);
           }
         }
+      } else {
+        // We are editing an existing survey. Delete any stale drafts to prevent corruption.
+        AsyncStorage.removeItem('unsaved_survey_draft').catch(()=>{});
       }
     })();
   }, [existingSurvey]);
@@ -302,15 +320,29 @@ export default function SurveyFormScreen({ route, navigation }) {
 
   // Listen to app state changes and save draft when backgrounded
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', nextAppState => {
-      if (nextAppState.match(/inactive|background/)) {
-        AsyncStorage.setItem('unsaved_survey_draft', JSON.stringify(formRef.current)).catch(() => {});
+    const sub = AppState.addEventListener('change', next => {
+      if (next === 'background' || next === 'inactive') {
+        if (!existingSurvey) {
+          AsyncStorage.setItem('unsaved_survey_draft', JSON.stringify(formRef.current)).catch(() => {});
+        }
       }
     });
-    return () => subscription.remove();
-  }, []);
+    return () => sub.remove();
+  }, [existingSurvey]);
 
   const set = useCallback((k, v) => setForm(f => ({ ...f, [k]: v })), []);
+
+  const handleStateChange = (val) => {
+    setForm(f => ({ ...f, stateId: val, stateName: states.find(x => x.id === val)?.name || '', districtId: null, districtName: '', blockId: null, blockName: '', gramPanchayatId: null, gramPanchayatName: '', gramPanchayatCode: '' }));
+  };
+
+  const handleDistrictChange = (val) => {
+    setForm(f => ({ ...f, districtId: val, districtName: districts.find(x => x.id === val)?.name || '', blockId: null, blockName: '', gramPanchayatId: null, gramPanchayatName: '', gramPanchayatCode: '' }));
+  };
+
+  const handleBlockChange = (val) => {
+    setForm(f => ({ ...f, blockId: val, blockName: blocks.find(x => x.id === val)?.name || '', gramPanchayatId: null, gramPanchayatName: '', gramPanchayatCode: '' }));
+  };
 
   const captureGps = async (latKey, longKey) => {
     setGpsLoading(p => ({ ...p, [latKey]: true }));

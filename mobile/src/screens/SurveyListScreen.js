@@ -28,11 +28,11 @@ const SurveyListScreen = ({ navigation }) => {
       setLoading(true);
       
       // True Incremental Sync for Surveys
-      const { getLocalSurveyMaxDate, insertServerSurvey } = require('../utils/localDB');
-      const maxDate = await getLocalSurveyMaxDate();
+      const { getLocalSurveyMaxId, insertServerSurvey } = require('../utils/localDB');
+      const maxId = await getLocalSurveyMaxId();
       
       try {
-        const res = await api.get(`/survey/list?afterDate=${encodeURIComponent(maxDate)}&size=1000`);
+        const res = await api.get(`/survey/list?afterId=${encodeURIComponent(maxId)}&size=1000`);
         if (res.data && res.data.content && res.data.content.length > 0) {
           // Save new surveys locally without overwriting unsynced edits
           for (let s of res.data.content) {
