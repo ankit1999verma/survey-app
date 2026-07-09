@@ -21,4 +21,13 @@ public interface SurveyRepository extends JpaRepository<Survey, Long> {
 
     Page<Survey> findByCompanyIdAndIdGreaterThanOrderByIdAsc(Long companyId, Long id, Pageable pageable);
     long countByCompanyIdAndIdGreaterThan(Long companyId, Long id);
+
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(s) FROM Survey s WHERE s.user.id = :userId " +
+            "AND (:stateId IS NULL OR s.stateId = :stateId) " +
+            "AND (:districtId IS NULL OR s.districtId = :districtId) " +
+            "AND (:blockId IS NULL OR s.blockId = :blockId)")
+    long countSurveysWithFilters(@org.springframework.data.repository.query.Param("userId") Long userId,
+                                 @org.springframework.data.repository.query.Param("stateId") Long stateId,
+                                 @org.springframework.data.repository.query.Param("districtId") Long districtId,
+                                 @org.springframework.data.repository.query.Param("blockId") Long blockId);
 }

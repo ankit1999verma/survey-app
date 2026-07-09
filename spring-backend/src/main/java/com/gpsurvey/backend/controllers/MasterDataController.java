@@ -29,36 +29,30 @@ public class MasterDataController {
         data.put("districts", districtRepo.findByIdGreaterThan(afterDistrictId));
         data.put("totalBlocks", blockRepo.count());
         data.put("totalGPs", gpRepo.count());
+        data.put("maxBlockId", blockRepo.findMaxId());
+        data.put("maxGpId", gpRepo.findMaxId());
         return ResponseEntity.ok(data);
     }
 
-    // Paginated blocks — cursor-based (only return id > afterId)
+    // Parallel chunked blocks — range-based
     @GetMapping("/blocks")
     public ResponseEntity<?> getBlocks(
-            @RequestParam(defaultValue = "0") long afterId,
-            @RequestParam(defaultValue = "5000") int size) {
-        var result = blockRepo.findByIdGreaterThanOrderByIdAsc(afterId, PageRequest.of(0, size));
+            @RequestParam(defaultValue = "0") long startId,
+            @RequestParam(defaultValue = "9999999999") long endId) {
+        var content = blockRepo.findByIdGreaterThanAndIdLessThanEqualOrderByIdAsc(startId, endId);
         Map<String, Object> data = new HashMap<>();
-        data.put("content", result.getContent());
-        data.put("hasMore", result.hasNext());
-        data.put("lastId", result.getContent().isEmpty() ? afterId :
-                result.getContent().get(result.getContent().size() - 1).getId());
-        data.put("totalElements", blockRepo.countByIdGreaterThan(afterId));
+        data.put("content", content);
         return ResponseEntity.ok(data);
     }
 
-    // Paginated GPs — cursor-based (only return id > afterId)
+    // Parallel chunked GPs — range-based
     @GetMapping("/gps")
     public ResponseEntity<?> getGPs(
-            @RequestParam(defaultValue = "0") long afterId,
-            @RequestParam(defaultValue = "5000") int size) {
-        var result = gpRepo.findByIdGreaterThanOrderByIdAsc(afterId, PageRequest.of(0, size));
+            @RequestParam(defaultValue = "0") long startId,
+            @RequestParam(defaultValue = "9999999999") long endId) {
+        var content = gpRepo.findByIdGreaterThanAndIdLessThanEqualOrderByIdAsc(startId, endId);
         Map<String, Object> data = new HashMap<>();
-        data.put("content", result.getContent());
-        data.put("hasMore", result.hasNext());
-        data.put("lastId", result.getContent().isEmpty() ? afterId :
-                result.getContent().get(result.getContent().size() - 1).getId());
-        data.put("totalElements", gpRepo.countByIdGreaterThan(afterId));
+        data.put("content", content);
         return ResponseEntity.ok(data);
     }
 

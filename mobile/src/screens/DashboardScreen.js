@@ -13,7 +13,7 @@ import * as Sharing from 'expo-sharing';
 
 import { AuthContext } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
-import { getPendingSurveys, syncSurveys, syncMasterData, getMasterData } from '../utils/syncManager';
+import { getPendingSurveys, syncSurveys, syncMasterData, getMasterData, getSurveyCounts } from '../utils/syncManager';
 import api from '../utils/api';
 import { colors, spacing, radius, typography, shadows } from '../theme';
 
@@ -24,6 +24,7 @@ const DashboardScreen = ({ navigation }) => {
   const [completedCount, setCompletedCount] = useState(0);
   const [todayCompletedCount, setTodayCompletedCount] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState({});
   const [lastSync, setLastSync] = useState(null);
 
   // Export Modal State
@@ -68,10 +69,13 @@ const DashboardScreen = ({ navigation }) => {
   async function handleSyncData(isAuto = false) {
     const silent = isAuto === true;
     setIsSyncing(true);
+    setSyncProgress({});
     try {
       const [result, mdResult] = await Promise.all([
         syncSurveys(),
-        syncMasterData()
+        syncMasterData((p) => {
+          setSyncProgress(prev => ({ ...prev, [p.step]: { done: p.done, total: p.total } }));
+        })
       ]);
       setLastSync(new Date());
       await AsyncStorage.setItem('lastSyncTime', new Date().toISOString());
@@ -256,13 +260,40 @@ const DashboardScreen = ({ navigation }) => {
             Start a new field survey. Location and offline storage active.
           </Text>
           <TouchableOpacity
-            style={styles.heroBtn}
+            style={[styles.heroBtn, isSyncing && { opacity: 0.7 }]}
             onPress={() => navigation.navigate('SurveyForm')}
             activeOpacity={0.85}
+            disabled={isSyncing}
           >
-            <Feather name="plus" size={20} color={colors.primary} />
-            <Text style={styles.heroBtnText}>Start New Survey</Text>
+            {isSyncing ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Feather name="plus" size={20} color={colors.primary} />
+            )}
+            <Text style={styles.heroBtnText}>
+              {isSyncing ? 'Syncing Data...' : 'Start New Survey'}
+            </Text>
           </TouchableOpacity>
+
+          {isSyncing && Object.keys(syncProgress).length > 0 && (
+            <View style={{ marginTop: 16 }}>
+              {(() => {
+                const done = Object.values(syncProgress).reduce((acc, curr) => acc + (curr.done || 0), 0);
+                const total = Object.values(syncProgress).reduce((acc, curr) => acc + (curr.total || 0), 0);
+                const percent = total > 0 ? Math.min(100, Math.max(0, (done / total) * 100)) : 0;
+                return (
+                  <>
+                    <View style={{ height: 6, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 3, overflow: 'hidden' }}>
+                      <View style={{ height: '100%', width: `${percent}%`, backgroundColor: '#fff', borderRadius: 3 }} />
+                    </View>
+                    <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 12, marginTop: 6, fontWeight: '500' }}>
+                      Downloading... {done.toLocaleString()} of {total.toLocaleString()} records
+                    </Text>
+                  </>
+                );
+              })()}
+            </View>
+          )}
         </View>
 
         {/* Stats Row */}

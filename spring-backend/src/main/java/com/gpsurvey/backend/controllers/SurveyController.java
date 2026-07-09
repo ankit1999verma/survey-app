@@ -58,4 +58,23 @@ public class SurveyController {
             return ResponseEntity.badRequest().body("Failed to fetch surveys: " + e.getMessage());
         }
     }
+
+    @GetMapping("/count")
+    public ResponseEntity<?> countSurveys(
+            @RequestParam(required = false) Long stateId,
+            @RequestParam(required = false) Long districtId,
+            @RequestParam(required = false) Long blockId,
+            @RequestHeader("Authorization") String authHeader) {
+        try {
+            Long userId = Long.parseLong(authHeader.replace("Bearer dummy-jwt-token-", ""));
+            long count = surveyRepo.countSurveysWithFilters(userId, stateId, districtId, blockId);
+            
+            java.util.Map<String, Object> data = new java.util.HashMap<>();
+            data.put("total", count);
+            
+            return ResponseEntity.ok(data);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Failed to fetch survey count: " + e.getMessage());
+        }
+    }
 }

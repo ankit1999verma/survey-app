@@ -8,4 +8,9 @@ public interface GramPanchayatRepository extends JpaRepository<GramPanchayat, Lo
     List<GramPanchayat> findByBlockId(Long blockId);
     Page<GramPanchayat> findByIdGreaterThanOrderByIdAsc(Long id, Pageable pageable);
     long countByIdGreaterThan(Long id);
+    
+    @org.springframework.data.jpa.repository.Query("SELECT COALESCE(MAX(g.id), 0) FROM GramPanchayat g")
+    Long findMaxId();
+    
+    List<GramPanchayat> findByIdGreaterThanAndIdLessThanEqualOrderByIdAsc(Long startId, Long endId);
 }

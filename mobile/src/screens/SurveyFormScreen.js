@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useCallback, useMemo } from 're
 import {
   View, Text, TextInput, StyleSheet, TouchableOpacity,
   ScrollView, Alert, StatusBar, Platform, ActivityIndicator, Modal,
-  LayoutAnimation, UIManager, Image, KeyboardAvoidingView
+  LayoutAnimation, UIManager, Image, KeyboardAvoidingView, AppState
 } from 'react-native';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
@@ -14,6 +14,7 @@ import WheelPickerField from '../components/WheelPickerField';
 import api from '../utils/api';
 import { saveSurveyOffline, getMasterData, syncMasterData } from '../utils/syncManager';
 import { colors, spacing, radius, typography, shadows } from '../theme';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -236,15 +237,77 @@ export default function SurveyFormScreen({ route, navigation }) {
   useEffect(() => {
     (async () => {
       let md = null;
-      try { md = await getMasterData(); } catch (_) {}
-      if (md) setMD(md);
       try {
-        const fresh = await syncMasterData();
-        if (fresh) setMD(fresh);
-      } catch (_) {
-        if (!md) setMD(null);
+        md = await getMasterData();
+        if (md) setMD(md);
+      } catch (e) {
+        console.log('Failed to load local master data', e);
+      }
+
+      if (!existingSurvey) {
+        let draftParsed = null;
+        try {
+          const draft = await AsyncStorage.getItem('unsaved_survey_draft');
+          if (draft) {
+            draftParsed = JSON.parse(draft);
+            if (draftParsed) setForm(draftParsed);
+          }
+        } catch(e) {}
+
+        // Auto-detect State and District from GPS if not already selected
+        if (md?.states?.length > 0 && !draftParsed?.stateId) {
+          try {
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status === 'granted') {
+              const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+              const geocode = await Location.reverseGeocodeAsync({
+                latitude: loc.coords.latitude,
+                longitude: loc.coords.longitude
+              });
+              if (geocode && geocode.length > 0) {
+                const { region, subregion, city } = geocode[0];
+                if (region) {
+                  const s = md.states.find(x => x.name.toLowerCase() === region.toLowerCase());
+                  if (s) {
+                    const distStr = subregion || city;
+                    let d = null;
+                    if (distStr) {
+                      d = md.districts.find(x => x.stateId === s.id && x.name.toLowerCase() === distStr.toLowerCase());
+                    }
+                    setForm(f => {
+                      if (f.stateId) return f; // User manually selected in the meantime
+                      return {
+                        ...f, 
+                        stateId: s.id, stateName: s.name,
+                        districtId: d?.id ?? null, districtName: d?.name ?? ''
+                      };
+                    });
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.log('Auto GPS detection failed', e);
+          }
+        }
       }
     })();
+  }, [existingSurvey]);
+
+  // Keep a ref to the latest form state for the AppState listener
+  const formRef = React.useRef(form);
+  useEffect(() => {
+    formRef.current = form;
+  }, [form]);
+
+  // Listen to app state changes and save draft when backgrounded
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (nextAppState.match(/inactive|background/)) {
+        AsyncStorage.setItem('unsaved_survey_draft', JSON.stringify(formRef.current)).catch(() => {});
+      }
+    });
+    return () => subscription.remove();
   }, []);
 
   const set = useCallback((k, v) => setForm(f => ({ ...f, [k]: v })), []);
@@ -254,7 +317,12 @@ export default function SurveyFormScreen({ route, navigation }) {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') { alert('Error', 'Permission denied'); return; }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      
+      // Use Highest accuracy for real-time accurate fixes when the button is explicitly clicked
+      const loc = await Location.getCurrentPositionAsync({ 
+        accuracy: Location.Accuracy.Highest 
+      });
+      
       set(latKey, String(loc.coords.latitude));
       set(longKey, String(loc.coords.longitude));
     } catch (e) {
@@ -353,6 +421,9 @@ export default function SurveyFormScreen({ route, navigation }) {
 
       await saveSurveyOffline(finalData, userInfo?.id);
       
+      // Clear the unsaved draft since we successfully saved
+      await AsyncStorage.removeItem('unsaved_survey_draft').catch(() => {});
+      
       alert(isDraft ? 'Draft Saved' : 'Saved', isDraft ? 'Draft saved locally.' : 'Survey saved locally. Sync when online.');
       setTimeout(() => navigation.goBack(), 500);
       
@@ -427,15 +498,15 @@ export default function SurveyFormScreen({ route, navigation }) {
           <SectionCard title="SECTION 0 · GP IDENTIFICATION" color={colors.primary}>
             <WheelF
               label="STATE / UT"
-              value={form.stateName}
-              items={[...states.map(s => ({ label: s.name, value: s.name })), { label: '+ Add New State...', value: '__ADD__' }]}
+              value={form.stateId}
+              items={[...states.map(s => ({ label: s.name, value: s.id })), { label: '+ Add New State...', value: '__ADD__' }]}
               placeholder="Select state..."
-              onChange={name => {
-                if (name === '__ADD__') { setAddModal('state'); return; }
-                const s = states.find(x => x.name === name);
+              onChange={id => {
+                if (id === '__ADD__') { setAddModal('state'); return; }
+                const s = states.find(x => x.id === id);
                 
                 setForm(f => ({
-                  ...f, stateName: name, stateId: s?.id ?? null,
+                  ...f, stateName: s?.name ?? '', stateId: s?.id ?? null,
                   districtName: '', districtId: null,
                   blockName: '', blockId: null,
                   gramPanchayatName: '', gramPanchayatId: null, gramPanchayatCode: '',
@@ -445,16 +516,16 @@ export default function SurveyFormScreen({ route, navigation }) {
             <WheelF
               ref={districtRef}
               label="DISTRICT"
-              value={form.districtName}
-              items={[...districts.map(d => ({ label: d.name, value: d.name })), form.stateId ? { label: '+ Add New District...', value: '__ADD__' } : null].filter(Boolean)}
+              value={form.districtId}
+              items={[...districts.map(d => ({ label: d.name, value: d.id })), form.stateId ? { label: '+ Add New District...', value: '__ADD__' } : null].filter(Boolean)}
               placeholder={form.stateId ? 'Select district...' : '— Select state first —'}
               disabled={!form.stateId}
-              onChange={name => {
-                if (name === '__ADD__') { setAddModal('district'); return; }
-                const d = districts.find(x => x.name === name);
+              onChange={id => {
+                if (id === '__ADD__') { setAddModal('district'); return; }
+                const d = districts.find(x => x.id === id);
                 
                 setForm(f => ({
-                  ...f, districtName: name, districtId: d?.id ?? null,
+                  ...f, districtName: d?.name ?? '', districtId: d?.id ?? null,
                   blockName: '', blockId: null,
                   gramPanchayatName: '', gramPanchayatId: null, gramPanchayatCode: '',
                 }));
@@ -463,16 +534,16 @@ export default function SurveyFormScreen({ route, navigation }) {
             <WheelF
               ref={blockRef}
               label="BLOCK"
-              value={form.blockName}
-              items={[...blocks.map(b => ({ label: b.name, value: b.name })), form.districtId ? { label: '+ Add New Block...', value: '__ADD__' } : null].filter(Boolean)}
+              value={form.blockId}
+              items={[...blocks.map(b => ({ label: b.name, value: b.id })), form.districtId ? { label: '+ Add New Block...', value: '__ADD__' } : null].filter(Boolean)}
               placeholder={form.districtId ? 'Select block...' : '— Select district first —'}
               disabled={!form.districtId}
-              onChange={name => {
-                if (name === '__ADD__') { setAddModal('block'); return; }
-                const b = blocks.find(x => x.name === name);
+              onChange={id => {
+                if (id === '__ADD__') { setAddModal('block'); return; }
+                const b = blocks.find(x => x.id === id);
                 
                 setForm(f => ({
-                  ...f, blockName: name, blockId: b?.id ?? null,
+                  ...f, blockName: b?.name ?? '', blockId: b?.id ?? null,
                   gramPanchayatName: '', gramPanchayatId: null, gramPanchayatCode: '',
                 }));
               }}
@@ -480,19 +551,19 @@ export default function SurveyFormScreen({ route, navigation }) {
             <WheelF
               ref={gpRef}
               label="GRAM PANCHAYAT"
-              value={form.gramPanchayatName}
-              items={[...gps.map(g => ({ label: g.name, value: g.name })), form.blockId ? { label: '+ Add New GP...', value: '__ADD__' } : null].filter(Boolean)}
+              value={form.gramPanchayatId}
+              items={[...gps.map(g => ({ label: g.name, value: g.id })), form.blockId ? { label: '+ Add New GP...', value: '__ADD__' } : null].filter(Boolean)}
               placeholder={form.blockId ? 'Select GP...' : '— Select block first —'}
               disabled={!form.blockId}
-              onChange={name => {
-                if (name === '__ADD__') { setAddModal('gp'); return; }
-                const g = gps.find(x => x.name === name);
+              onChange={id => {
+                if (id === '__ADD__') { setAddModal('gp'); return; }
+                const g = gps.find(x => x.id === id);
                 
                 setForm(f => ({
-                  ...f, gramPanchayatName: name,
+                  ...f, gramPanchayatName: g?.name ?? '',
                   gramPanchayatId: g?.id ?? null, gramPanchayatCode: g?.code ?? '',
                 }));
-                if (name) {
+                if (id) {
                   // Small tick to ensure React state batches before focus
                   setTimeout(() => vendorRef.current?.focus(), 50);
                 }

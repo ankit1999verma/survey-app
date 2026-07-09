@@ -288,7 +288,7 @@ export async function markSynced(uuids) {
   const placeholders = uuids.map(() => '?').join(',');
   await d.runAsync(
     `UPDATE surveys SET synced = 1, syncedAt = datetime('now') WHERE uuid IN (${placeholders})`,
-    uuids
+    ...uuids
   );
 }
 
@@ -321,7 +321,8 @@ export async function getLocalSurveyMaxDate() {
   }
   const d = await getDB();
   const max = await d.getFirstAsync('SELECT MAX(createdAt) as maxDate FROM surveys');
-  return max?.maxDate || '1970-01-01T00:00:00';
+  let dateStr = max?.maxDate || '1970-01-01T00:00:00';
+  return dateStr.replace(' ', 'T');
 }
 
 // ── Master data (normalized tables) ──────────────────────────────────────────
