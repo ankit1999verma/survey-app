@@ -1,9 +1,8 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Replace with your local machine's IP address when testing on a real device
-// e.g., 'http://192.168.1.176:5000/api'
-const BASE_URL = 'http://13.204.243.30/api';
+// API Base URL - update this to match your backend environment
+const BASE_URL = 'https://gpsurvey.tivarax.in/api';
 
 const api = axios.create({
   baseURL: BASE_URL,
