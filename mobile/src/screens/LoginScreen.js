@@ -145,7 +145,7 @@ const LoginScreen = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surfaceContainerLow },
   keyboardView: { flex: 1 },
-  scrollContent: { flexGrow: 1, paddingHorizontal: spacing.lg, justifyContent: 'center' },
+  scrollContent: { flexGrow: 1, paddingHorizontal: spacing.lg, paddingTop: 60, paddingBottom: 40 },
 
   // Brand
   brandContainer: {

@@ -185,7 +185,7 @@ const RegisterScreen = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surfaceContainerLow },
   keyboardView: { flex: 1 },
-  scrollContent: { flexGrow: 1, paddingHorizontal: spacing.lg, justifyContent: 'center', paddingTop: spacing.xxl },
+  scrollContent: { flexGrow: 1, paddingHorizontal: spacing.lg, paddingTop: 80, paddingBottom: 40 },
 
   backBtn: {
     position: 'absolute',

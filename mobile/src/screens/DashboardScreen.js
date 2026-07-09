@@ -47,7 +47,17 @@ const DashboardScreen = ({ navigation }) => {
       const counts = await getSurveyCounts();
       setPendingCount(counts.unsynced);
       setIsSynced(counts.unsynced === 0);
-      setCompletedCount(counts.total);
+      
+      try {
+        const res = await api.get('/survey/count');
+        if (res.data && res.data.total !== undefined) {
+          setCompletedCount(Math.max(counts.total, res.data.total));
+        } else {
+          setCompletedCount(counts.total);
+        }
+      } catch (err) {
+        setCompletedCount(counts.total);
+      }
       
       const cachedLastSync = await AsyncStorage.getItem('lastSyncTime');
       if (cachedLastSync) {
