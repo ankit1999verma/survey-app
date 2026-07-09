@@ -15,6 +15,13 @@ echo "Setting up EC2 environment for gpsurvey..."
 APP_DIR="/opt/gpsurvey"
 LOG_DIR="/var/log/gpsurvey"
 
+# Install Java 17 if not installed
+if ! command -v java &> /dev/null || ! java -version 2>&1 | grep -q "17."; then
+  sudo apt-get update
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y openjdk-17-jre-headless
+  sudo update-alternatives --set java /usr/lib/jvm/java-17-openjdk-amd64/bin/java || true
+fi
+
 # Create directories
 sudo mkdir -p ${APP_DIR}/releases
 sudo mkdir -p ${LOG_DIR}
@@ -82,6 +89,28 @@ EOF
   if [ ! -L /etc/nginx/gpsurvey/app_backend.conf ]; then
     sudo ln -s /etc/nginx/gpsurvey/upstream_blue.conf /etc/nginx/gpsurvey/app_backend.conf
   fi
+
+  # Create server block for gpsurvey API
+  cat << EOF | sudo tee /etc/nginx/sites-available/gpsurvey.conf
+server {
+    listen 80;
+    server_name 13.204.243.30;
+    
+    # Include the active upstream
+    include /etc/nginx/gpsurvey/app_backend.conf;
+
+    location /api/ {
+        proxy_pass http://backend_app;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+EOF
+
+  sudo ln -sf /etc/nginx/sites-available/gpsurvey.conf /etc/nginx/sites-enabled/
+  sudo systemctl reload nginx
 
   echo "Nginx configuration prepared in /etc/nginx/gpsurvey/"
 else
