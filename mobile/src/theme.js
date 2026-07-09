@@ -57,23 +57,23 @@ export const typography = {
 
 export const shadows = {
   sm: Platform.select({
-    ios: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 },
+    ios: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 2 },
     android: { elevation: 2 },
-    web: { boxShadow: '0 1px 2px 0 rgba(15, 23, 42, 0.05)' }
+    web: { boxShadow: '0 1px 2px 0 rgba(15, 23, 42, 0.04)' }
   }),
   md: Platform.select({
-    ios: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 8 },
+    ios: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 8 },
     android: { elevation: 4 },
-    web: { boxShadow: '0 4px 6px -1px rgba(15, 23, 42, 0.08)' }
+    web: { boxShadow: '0 4px 6px -1px rgba(15, 23, 42, 0.06)' }
   }),
   lg: Platform.select({
-    ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 15 },
+    ios: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.08, shadowRadius: 20 },
     android: { elevation: 8 },
-    web: { boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }
+    web: { boxShadow: '0 10px 25px -3px rgba(15, 23, 42, 0.08)' }
   }),
   primary: Platform.select({
-    ios: { shadowColor: colors.primary, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12 },
+    ios: { shadowColor: colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 16 },
     android: { elevation: 8, shadowColor: colors.primary },
-    web: { boxShadow: '0 10px 15px -3px rgba(37, 99, 235, 0.3)' }
+    web: { boxShadow: '0 8px 16px -3px rgba(37, 99, 235, 0.25)' }
   }),
 };

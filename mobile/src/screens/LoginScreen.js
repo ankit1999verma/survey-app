@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, radius, typography, shadows } from '../theme';
 import { useNavigation } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const LoginScreen = () => {
   const navigation = useNavigation();
@@ -36,8 +37,8 @@ const LoginScreen = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.surfaceContainerLow} />
+    <LinearGradient colors={[colors.surfaceContainerLow, '#E2E8F0', '#CBD5E1']} style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
       <KeyboardAvoidingView 
         style={styles.keyboardView} 
@@ -54,10 +55,10 @@ const LoginScreen = () => {
           {/* Logo / Title Area */}
           <View style={styles.brandContainer}>
             <View style={styles.logoBox}>
-              <Feather name="radio" size={36} color={colors.primary} />
+              <Feather name="map-pin" size={36} color={colors.primary} />
             </View>
-            <Text style={styles.appName}>BSNL GP Survey</Text>
-            <Text style={styles.appSubtitle}>Secure Field Portal</Text>
+            <Text style={styles.appName}>GramSync Pro</Text>
+            <Text style={styles.appSubtitle}>Rural Network Survey</Text>
           </View>
 
           {/* Login Card */}
@@ -134,16 +135,19 @@ const LoginScreen = () => {
             <Text style={styles.sessionText}>Your session will persist until manual logout.</Text>
           </View>
 
-          {/* Version footer */}
-          <Text style={styles.versionText}>V1.0.0-STABLE  •  SECURE MODE</Text>
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>Authorized usage only. © 2026 GramSync Pro.</Text>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surfaceContainerLow },
+  container: {
+    flex: 1,
+  },
   keyboardView: { flex: 1 },
   scrollContent: { flexGrow: 1, paddingHorizontal: spacing.lg, paddingTop: 60, paddingBottom: 40 },
 
@@ -154,33 +158,35 @@ const styles = StyleSheet.create({
   },
   logoBox: {
     width: 72, height: 72,
-    backgroundColor: colors.white,
-    borderRadius: 20,
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    padding: spacing.md,
     justifyContent: 'center', alignItems: 'center',
     marginBottom: spacing.md,
     ...shadows.md,
   },
   appName: {
-    ...typography.headlineMd,
-    fontWeight: '800',
-    color: colors.primary,
-    letterSpacing: -0.5,
+    ...typography.displayLg,
+    color: colors.primaryDark,
+    textAlign: 'center',
   },
   appSubtitle: {
-    ...typography.labelLg,
+    ...typography.bodyMd,
     color: colors.onSurfaceVariant,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    marginTop: 4,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+    letterSpacing: 1,
   },
 
   // Card
   card: {
-    backgroundColor: colors.white,
-    borderRadius: 24,
+    backgroundColor: colors.surface,
+    marginHorizontal: spacing.lg,
+    borderRadius: radius.xxl,
     padding: spacing.xl,
-    marginBottom: spacing.xl,
     ...shadows.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
   },
   cardTitle: {
     ...typography.headlineSm, color: colors.onSurface,
@@ -227,7 +233,12 @@ const styles = StyleSheet.create({
     ...shadows.md,
   },
   loginBtnDisabled: { opacity: 0.7 },
-  loginBtnText: { color: colors.white, ...typography.titleMd, fontWeight: '700' },
+  loginBtnText: {
+    ...typography.labelMd,
+    color: colors.white,
+    marginLeft: spacing.sm,
+    fontSize: 16,
+  },
   forgotBtn: { alignSelf: 'center', paddingVertical: 8 },
   forgotText: {
     ...typography.labelLg, color: colors.primary,
@@ -241,18 +252,23 @@ const styles = StyleSheet.create({
 
   // Session banner
   sessionBanner: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(37, 99, 235, 0.08)',
-    borderRadius: radius.lg, padding: spacing.md, gap: 12,
-    marginBottom: spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    borderRadius: radius.xl,
+    justifyContent: 'center',
+    marginTop: spacing.xl,
+    ...shadows.primary,
   },
   sessionText: {
-    ...typography.labelMd, color: colors.primary,
+    ...typography.labelMd, color: colors.white,
     flex: 1, lineHeight: 20,
   },
 
-  // Version
-  versionText: {
+  // Footer
+  footer: { marginTop: spacing.xl, alignItems: 'center' },
+  footerText: {
     textAlign: 'center', 
     ...typography.labelSm, color: colors.outline, letterSpacing: 1.5,
   },

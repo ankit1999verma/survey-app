@@ -1,16 +1,19 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
   FlatList, ActivityIndicator, Modal, ScrollView,
   KeyboardAvoidingView, Platform, StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
 import api from '../utils/api';
 import { useAlert } from '../context/AlertContext';
 import { syncMasterData, getMasterData } from '../utils/syncManager';
-import { clearMasterData } from '../utils/localDB';
+import { clearMasterData, getMasterCounts, getFilteredMasterData } from '../utils/localDB';
+import { colors, spacing, radius, typography, shadows } from '../theme';
 
 const TABS = ['States', 'Districts', 'Blocks', 'GPs'];
+const PAGE_SIZE = 50;
 
 const PickerRow = ({ label, value, onPress, disabled }) => (
   <TouchableOpacity
@@ -21,7 +24,7 @@ const PickerRow = ({ label, value, onPress, disabled }) => (
     <Text style={[styles.pickerText, !value && styles.pickerPlaceholder]}>
       {value || `Select ${label}…`}
     </Text>
-    <Text style={styles.pickerArrow}>›</Text>
+    <Feather name="chevron-right" size={16} color={colors.placeholder} />
   </TouchableOpacity>
 );
 
@@ -30,21 +33,25 @@ const SelectModal = ({ visible, title, items, onSelect, onClose }) => {
   const filtered = items.filter(i => i.label.toLowerCase().includes(search.toLowerCase()));
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.modalSafe}>
+      <SafeAreaView style={styles.modalSafe} edges={['top']}>
         <View style={styles.modalHeader}>
-          <TouchableOpacity onPress={onClose}>
-            <Text style={styles.modalCancel}>Cancel</Text>
+          <TouchableOpacity onPress={onClose} style={styles.headerBtn}>
+            <Feather name="x" size={22} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.modalTitle}>{title}</Text>
-          <View style={{ width: 60 }} />
+          <Text style={styles.modalHeaderTitle}>{title}</Text>
+          <View style={{ width: 40 }} />
         </View>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search…"
-          value={search}
-          onChangeText={setSearch}
-          autoFocus
-        />
+        <View style={styles.searchWrap}>
+          <Feather name="search" size={16} color={colors.placeholder} style={{ marginRight: 8 }} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search…"
+            placeholderTextColor={colors.placeholder}
+            value={search}
+            onChangeText={setSearch}
+            autoFocus
+          />
+        </View>
         <FlatList
           data={filtered}
           keyExtractor={i => String(i.value)}
@@ -54,9 +61,10 @@ const SelectModal = ({ visible, title, items, onSelect, onClose }) => {
           renderItem={({ item }) => (
             <TouchableOpacity style={styles.modalItem} onPress={() => { onSelect(item); onClose(); }}>
               <Text style={styles.modalItemText}>{item.label}</Text>
+              <Feather name="chevron-right" size={14} color={colors.placeholder} />
             </TouchableOpacity>
           )}
-          ListEmptyComponent={<Text style={styles.emptyText}>No results</Text>}
+          ListEmptyComponent={<Text style={styles.emptyText}>No results found</Text>}
         />
       </SafeAreaView>
     </Modal>
@@ -66,98 +74,145 @@ const SelectModal = ({ visible, title, items, onSelect, onClose }) => {
 export default function MasterDataScreen({ navigation }) {
   const { showAlert: alert } = useAlert();
   const [activeTab, setActiveTab] = useState(0);
-  const [loading, setLoading]     = useState(false);
+  const [syncing, setSyncing]     = useState(false);
   const [saving, setSaving]       = useState(false);
   const [clearing, setClearing]   = useState(false);
-  const [syncProgress, setSyncProgress] = useState(null); // { step, done, total }
-  const [states, setStates]       = useState([]);
-  const [districts, setDistricts] = useState([]);
-  const [blocks, setBlocks]       = useState([]);
-  const [gps, setGps]             = useState([]);
-  const [form, setForm]           = useState({ name: '', code: '' });
+  const [syncProgress, setSyncProgress] = useState(null);
+
+  // Counts for tab badges
+  const [counts, setCounts] = useState({ states: 0, districts: 0, blocks: 0, gps: 0 });
+
+  // Paginated list state
+  const [items, setItems]         = useState([]);
+  const [listLoading, setListLoading] = useState(false);
+  const [offset, setOffset]       = useState(0);
+  const [hasMore, setHasMore]     = useState(false);
+
+  // Filters
   const [selState, setSelState]       = useState(null);
   const [selDistrict, setSelDistrict] = useState(null);
   const [selBlock, setSelBlock]       = useState(null);
   const [stateModal, setStateModal]       = useState(false);
   const [districtModal, setDistrictModal] = useState(false);
   const [blockModal, setBlockModal]       = useState(false);
-  
-  const [page, setPage] = useState(1);
-  const ITEMS_PER_PAGE = 50;
 
-  const fetchAll = useCallback(async (forceSync = false) => {
-    setLoading(true);
-    setSyncProgress(null);
-    try {
-      let masterData = await getMasterData();
+  // For picker options (only states+districts need full list, small data)
+  const [states, setStates]       = useState([]);
+  const [districts, setDistricts] = useState([]);
+  const [blocks, setBlocks]       = useState([]);
 
-      if (!masterData || forceSync) {
-        // Paginated sync with live progress
-        masterData = await syncMasterData((progress) => {
-          setSyncProgress(progress);
-          // Update UI as each chunk arrives
-          if (progress.step === 'gps' && progress.done > 0) {
-            getMasterData().then(d => {
-              if (d) {
-                setStates(d.states || []);
-                setDistricts(d.districts || []);
-                setBlocks(d.blocks || []);
-                setGps(d.gramPanchayats || []);
-              }
-            });
-          }
-        });
-      }
+  // Add form
+  const [form, setForm] = useState({ name: '', code: '' });
 
-      if (masterData) {
-        setStates(masterData.states || []);
-        setDistricts(masterData.districts || []);
-        setBlocks(masterData.blocks || []);
-        setGps(masterData.gramPanchayats || []);
-      }
-    } catch (e) {
-      alert('Error', 'Could not sync master data: ' + (e.message || 'Check your connection.'));
-    } finally {
-      setLoading(false);
-      setSyncProgress(null);
+  // Load counts and picker options
+  const loadCounts = useCallback(async () => {
+    const c = await getMasterCounts();
+    setCounts(c);
+  }, []);
+
+  const loadPickerOptions = useCallback(async () => {
+    const data = await getMasterData();
+    if (data) {
+      setStates(data.states || []);
+      setDistricts(data.districts || []);
+      // blocks for picker: only when district selected, fetched on demand
     }
   }, []);
 
-  const handleClear = async () => {
-    alert(
-      'Clear Master Data',
-      'This will delete all locally stored states, districts, blocks and GPs. You will need to re-sync. Are you sure?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear All', style: 'destructive',
-          onPress: async () => {
-            setClearing(true);
-            try {
-              await clearMasterData();
-              setStates([]); setDistricts([]); setBlocks([]); setGps([]);
-            } catch (e) {
-              alert('Error', 'Could not clear master data.');
-            } finally {
-              setClearing(false);
-            }
-          },
-        },
-      ]
-    );
+  // Load paginated list for active tab
+  const loadList = useCallback(async (tab, parentId, off = 0, append = false) => {
+    setListLoading(true);
+    try {
+      const rows = await getFilteredMasterData({ tab, parentId, limit: PAGE_SIZE, offset: off });
+      if (append) {
+        setItems(prev => [...prev, ...rows]);
+      } else {
+        setItems(rows);
+      }
+      setOffset(off + rows.length);
+      setHasMore(rows.length === PAGE_SIZE);
+    } catch (e) {
+      console.warn('loadList error', e);
+    } finally {
+      setListLoading(false);
+    }
+  }, []);
+
+  // Parent ID for current tab filter
+  const getParentId = () => {
+    if (activeTab === 1) return selState?.value ?? null;
+    if (activeTab === 2) return selDistrict?.value ?? null;
+    if (activeTab === 3) return selBlock?.value ?? null;
+    return null;
   };
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  // Sync master data
+  const handleSync = useCallback(async (force = false) => {
+    setSyncing(true);
+    setSyncProgress(null);
+    try {
+      const data = await getMasterData();
+      if (!data || force) {
+        await syncMasterData((p) => setSyncProgress(p));
+      }
+      await loadCounts();
+      await loadPickerOptions();
+      await loadList(activeTab, getParentId(), 0, false);
+    } catch (e) {
+      alert('Error', 'Could not sync: ' + (e.message || 'Check connection.'));
+    } finally {
+      setSyncing(false);
+      setSyncProgress(null);
+    }
+  }, [activeTab, selState, selDistrict, selBlock]);
 
   useEffect(() => {
-    setForm({ name: '', code: '' });
+    handleSync(false);
+  }, []);
+
+  // Reload list when tab or filters change
+  useEffect(() => {
+    setItems([]);
+    setOffset(0);
+    setHasMore(false);
+    loadList(activeTab, getParentId(), 0, false);
+    loadCounts();
+  }, [activeTab, selState, selDistrict, selBlock]);
+
+  // Reset filters on tab change
+  useEffect(() => {
     setSelState(null); setSelDistrict(null); setSelBlock(null);
-    setPage(1);
+    setForm({ name: '', code: '' });
   }, [activeTab]);
 
+  // Load blocks for block picker when district changes
   useEffect(() => {
-    setPage(1);
-  }, [selState, selDistrict, selBlock]);
+    if (selDistrict) {
+      getFilteredMasterData({ tab: 2, parentId: selDistrict.value, limit: 5000, offset: 0 })
+        .then(rows => setBlocks(rows))
+        .catch(() => {});
+    } else {
+      setBlocks([]);
+    }
+  }, [selDistrict]);
+
+  const handleClear = async () => {
+    alert('Clear Master Data', 'This will delete all local data. You will need to re-sync.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear All', style: 'destructive',
+        onPress: async () => {
+          setClearing(true);
+          try {
+            await clearMasterData();
+            setItems([]); setCounts({ states: 0, districts: 0, blocks: 0, gps: 0 });
+          } catch (e) {
+            alert('Error', 'Could not clear master data.');
+          } finally { setClearing(false); }
+        },
+      },
+    ]);
+  };
 
   const handleAdd = async () => {
     const name = form.name.trim();
@@ -168,173 +223,182 @@ export default function MasterDataScreen({ navigation }) {
       endpoint = '/master/states';
     } else if (activeTab === 1) {
       if (!selState) { alert('Error', 'Select a state first'); return; }
-      endpoint = '/master/districts';
-      payload  = { ...payload, stateId: selState.value };
+      endpoint = '/master/districts'; payload = { ...payload, stateId: selState.value };
     } else if (activeTab === 2) {
       if (!selDistrict) { alert('Error', 'Select a district first'); return; }
-      endpoint = '/master/blocks';
-      payload  = { ...payload, districtId: selDistrict.value };
+      endpoint = '/master/blocks'; payload = { ...payload, districtId: selDistrict.value };
     } else {
       if (!selBlock) { alert('Error', 'Select a block first'); return; }
-      endpoint = '/master/grampanchayats';
-      payload  = { ...payload, blockId: selBlock.value };
+      endpoint = '/master/grampanchayats'; payload = { ...payload, blockId: selBlock.value };
     }
     setSaving(true);
     try {
       await api.post(endpoint, payload);
-      await fetchAll();
-      try { await syncMasterData(); } catch (_) {}
       setForm({ name: '', code: '' });
-      setSelState(null); setSelDistrict(null); setSelBlock(null);
-      alert('Success', `${TABS[activeTab].slice(0, -1)} added successfully!`);
+      await handleSync(true);
+      alert('Success', `${TABS[activeTab].slice(0, -1)} added!`);
     } catch (e) {
-      alert('Error', e.response?.data?.error ?? 'Failed to save. Try again.');
-    } finally {
-      setSaving(false);
-    }
+      alert('Error', e.response?.data?.error ?? 'Failed to save.');
+    } finally { setSaving(false); }
   };
 
   const stateOptions    = states.map(s => ({ label: s.name, value: s.id }));
   const districtOptions = selState
     ? districts.filter(d => d.stateId === selState.value).map(d => ({ label: d.name, value: d.id }))
     : districts.map(d => ({ label: d.name, value: d.id }));
-  const blockOptions    = selDistrict
-    ? blocks.filter(b => b.districtId === selDistrict.value).map(b => ({ label: b.name, value: b.id }))
-    : blocks.map(b => ({ label: b.name, value: b.id }));
+  const blockOptions    = blocks.map(b => ({ label: b.name, value: b.id }));
 
-  const currentList = () => {
-    if (activeTab === 0) return states;
-    if (activeTab === 1) return selState ? districts.filter(d => d.stateId === selState.value) : districts;
-    if (activeTab === 2) return selDistrict ? blocks.filter(b => b.districtId === selDistrict.value) : blocks;
-    return selBlock ? gps.filter(g => g.blockId === selBlock.value) : gps;
-  };
+  const tabCounts = [counts.states, counts.districts, counts.blocks, counts.gps];
 
-  const listSubtitle = (item) => {
-    if (activeTab === 1) { const st = states.find(s => s.id === item.stateId); return st ? st.name : ''; }
-    if (activeTab === 2) { const dist = districts.find(d => d.id === item.districtId); return dist ? dist.name : ''; }
-    if (activeTab === 3) { const bl = blocks.find(b => b.id === item.blockId); return bl ? bl.name : ''; }
-    return '';
-  };
-
-  const filterLabel = () => {
-    if (activeTab === 3 && selBlock) return `GPs in ${selBlock.label}`;
-    if (activeTab === 2 && selDistrict) return `Blocks in ${selDistrict.label}`;
-    if (activeTab === 1 && selState) return `Districts in ${selState.label}`;
-    return `All ${TABS[activeTab]}`;
-  };
-
-  const paginatedList = currentList().slice(0, page * ITEMS_PER_PAGE);
+  const renderItem = ({ item }) => (
+    <View style={styles.listItem}>
+      <View style={styles.listDot} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.listItemName}>{item.name}</Text>
+      </View>
+      {item.code ? <View style={styles.codeBadge}><Text style={styles.codeText}>{item.code}</Text></View> : null}
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <StatusBar barStyle="light-content" backgroundColor="#1a3a8f" />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
+
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backArrow}>‹</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
+          <Feather name="chevron-left" size={26} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Master Data</Text>
-        <TouchableOpacity onPress={() => fetchAll(true)} style={styles.refreshBtn}>
-          <Text style={styles.refreshText}>⟳</Text>
+        <TouchableOpacity onPress={() => handleSync(true)} style={styles.headerBtn} disabled={syncing}>
+          {syncing
+            ? <ActivityIndicator size="small" color="#fff" />
+            : <Feather name="refresh-cw" size={20} color="#fff" />
+          }
         </TouchableOpacity>
       </View>
 
+      {/* Sync progress */}
+      {syncProgress && (
+        <View style={styles.progressBanner}>
+          <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 8 }} />
+          <Text style={styles.progressText}>
+            {syncProgress.step === 'states' ? 'Syncing states & districts...' :
+             syncProgress.step === 'blocks' ? `Blocks: ${syncProgress.done.toLocaleString()} / ${syncProgress.total?.toLocaleString() || '?'}` :
+             `GPs: ${syncProgress.done.toLocaleString()} / ${syncProgress.total?.toLocaleString() || '?'}`}
+          </Text>
+        </View>
+      )}
+
       {/* Clear banner */}
       <TouchableOpacity
-        style={[styles.clearBanner, clearing && styles.clearBannerDisabled]}
+        style={[styles.clearBanner, clearing && { opacity: 0.6 }]}
         onPress={handleClear}
-        disabled={clearing || loading}
+        disabled={clearing || syncing}
       >
         {clearing
           ? <ActivityIndicator size="small" color="#fff" />
-          : <Text style={styles.clearBannerText}>🗑  Clear All Local Master Data</Text>}
+          : <><Feather name="trash-2" size={13} color="#fff" /><Text style={styles.clearBannerText}>  Clear All Local Master Data</Text></>
+        }
       </TouchableOpacity>
 
+      {/* Tabs */}
       <View style={styles.tabBar}>
         {TABS.map((t, i) => (
           <TouchableOpacity key={t} style={[styles.tab, activeTab === i && styles.tabActive]} onPress={() => setActiveTab(i)}>
             <Text style={[styles.tabText, activeTab === i && styles.tabTextActive]}>{t}</Text>
+            <Text style={[styles.tabCount, activeTab === i && styles.tabCountActive]}>
+              {tabCounts[i].toLocaleString()}
+            </Text>
           </TouchableOpacity>
         ))}
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          {/* Add Form */}
-          <View style={styles.formCard}>
-            <Text style={styles.formTitle}>Add New {TABS[activeTab].slice(0, -1)}</Text>
-            {activeTab >= 1 && (
-              <>
-                <Text style={styles.fieldLabel}>STATE</Text>
-                <PickerRow label="State" value={selState?.label} onPress={() => setStateModal(true)} />
-              </>
-            )}
+        {/* Filters */}
+        {(activeTab >= 1) && (
+          <View style={styles.filterRow}>
+            <TouchableOpacity style={styles.filterChip} onPress={() => setStateModal(true)}>
+              <Text style={styles.filterChipText} numberOfLines={1}>{selState?.label || 'All States'}</Text>
+              <Feather name="chevron-down" size={14} color={colors.primary} />
+            </TouchableOpacity>
             {activeTab >= 2 && (
-              <>
-                <Text style={styles.fieldLabel}>DISTRICT</Text>
-                <PickerRow label="District" value={selDistrict?.label} onPress={() => setDistrictModal(true)} disabled={!selState} />
-              </>
+              <TouchableOpacity style={styles.filterChip} onPress={() => setDistrictModal(true)} disabled={!selState}>
+                <Text style={[styles.filterChipText, !selState && { color: colors.placeholder }]} numberOfLines={1}>
+                  {selDistrict?.label || 'All Districts'}
+                </Text>
+                <Feather name="chevron-down" size={14} color={colors.primary} />
+              </TouchableOpacity>
             )}
             {activeTab === 3 && (
-              <>
-                <Text style={styles.fieldLabel}>BLOCK</Text>
-                <PickerRow label="Block" value={selBlock?.label} onPress={() => setBlockModal(true)} disabled={!selDistrict} />
-              </>
+              <TouchableOpacity style={styles.filterChip} onPress={() => setBlockModal(true)} disabled={!selDistrict}>
+                <Text style={[styles.filterChipText, !selDistrict && { color: colors.placeholder }]} numberOfLines={1}>
+                  {selBlock?.label || 'All Blocks'}
+                </Text>
+                <Feather name="chevron-down" size={14} color={colors.primary} />
+              </TouchableOpacity>
             )}
+          </View>
+        )}
+
+        {/* Add Form */}
+        <ScrollView style={styles.addFormScroll} contentContainerStyle={styles.addFormContent} keyboardShouldPersistTaps="handled">
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Add New {TABS[activeTab].slice(0, -1)}</Text>
             <Text style={styles.fieldLabel}>NAME *</Text>
             <TextInput
               style={styles.input}
               placeholder={`Enter ${TABS[activeTab].slice(0, -1)} name`}
+              placeholderTextColor={colors.placeholder}
               value={form.name}
               onChangeText={v => setForm(f => ({ ...f, name: v }))}
             />
-            <Text style={styles.fieldLabel}>CODE (optional)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. BLK-01"
-              value={form.code}
-              onChangeText={v => setForm(f => ({ ...f, code: v }))}
-              autoCapitalize="characters"
-            />
-            <TouchableOpacity style={[styles.addBtn, saving && styles.addBtnDisabled]} onPress={handleAdd} disabled={saving}>
+            {activeTab === 3 && (
+              <>
+                <Text style={styles.fieldLabel}>CODE</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter code (optional)"
+                  placeholderTextColor={colors.placeholder}
+                  value={form.code}
+                  onChangeText={v => setForm(f => ({ ...f, code: v }))}
+                />
+              </>
+            )}
+            <TouchableOpacity style={[styles.addBtn, saving && { opacity: 0.6 }]} onPress={handleAdd} disabled={saving}>
               {saving
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.addBtnText}>+ Add {TABS[activeTab].slice(0, -1)}</Text>}
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <><Feather name="plus" size={16} color="#fff" /><Text style={styles.addBtnText}>  Add {TABS[activeTab].slice(0, -1)}</Text></>
+              }
             </TouchableOpacity>
           </View>
-
-          {/* List */}
-          <View style={styles.listCard}>
-            <Text style={styles.listTitle}>{filterLabel()} ({currentList().length})</Text>
-            {loading
-              ? <>
-                  <ActivityIndicator style={{ marginTop: 16 }} color="#1a3a8f" />
-                  {syncProgress && (
-                    <Text style={styles.progressText}>
-                      {syncProgress.step === 'states' ? '📍 Syncing states & districts...' :
-                       syncProgress.step === 'blocks' ? `🏘 Blocks: ${syncProgress.done.toLocaleString()} / ${syncProgress.total?.toLocaleString() || '?'}` :
-                       `🏡 GPs: ${syncProgress.done.toLocaleString()} / ${syncProgress.total?.toLocaleString() || '?'}`}
-                    </Text>
-                  )}
-                </>
-              : currentList().length === 0
-                ? <Text style={styles.emptyText}>No data found. Add one above.</Text>
-                : <>
-                    {paginatedList.map(item => (
-                      <View key={item.id} style={styles.listItem}>
-                        <Text style={styles.listItemName}>{item.name}</Text>
-                        {listSubtitle(item) ? <Text style={styles.listItemSub}>{listSubtitle(item)}</Text> : null}
-                        {item.code ? <Text style={styles.listItemCode}>{item.code}</Text> : null}
-                      </View>
-                    ))}
-                    {paginatedList.length < currentList().length && (
-                      <TouchableOpacity style={styles.loadMoreBtn} onPress={() => setPage(p => p + 1)}>
-                        <Text style={styles.loadMoreText}>Load More</Text>
-                      </TouchableOpacity>
-                    )}
-                  </>
-            }
-          </View>
         </ScrollView>
+
+        {/* List */}
+        <FlatList
+          data={items}
+          keyExtractor={item => String(item.id)}
+          renderItem={renderItem}
+          contentContainerStyle={styles.listContent}
+          initialNumToRender={20}
+          maxToRenderPerBatch={20}
+          windowSize={5}
+          ListEmptyComponent={
+            listLoading ? null : (
+              <Text style={styles.emptyText}>
+                {syncing ? 'Syncing data...' : 'No records. Tap ↑ sync to download data.'}
+              </Text>
+            )
+          }
+          ListFooterComponent={
+            listLoading ? <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} /> :
+            hasMore ? (
+              <TouchableOpacity style={styles.loadMoreBtn} onPress={() => loadList(activeTab, getParentId(), offset, true)}>
+                <Text style={styles.loadMoreText}>Load More</Text>
+              </TouchableOpacity>
+            ) : null
+          }
+        />
       </KeyboardAvoidingView>
 
       <SelectModal visible={stateModal} title="Select State" items={stateOptions}
@@ -350,51 +414,115 @@ export default function MasterDataScreen({ navigation }) {
   );
 }
 
-const BLUE = '#1a3a8f';
 const styles = StyleSheet.create({
-  safe:              { flex: 1, backgroundColor: '#f0f4ff' },
-  header:            { backgroundColor: BLUE, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
-  backBtn:           { width: 36 },
-  backArrow:         { color: '#fff', fontSize: 28, lineHeight: 30 },
-  headerTitle:       { flex: 1, color: '#fff', fontSize: 18, fontWeight: '700', textAlign: 'center' },
-  refreshBtn:        { width: 36, alignItems: 'flex-end' },
-  refreshText:       { color: '#fff', fontSize: 22 },
-  tabBar:            { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e0e7ff' },
-  tab:               { flex: 1, paddingVertical: 12, alignItems: 'center' },
-  tabActive:         { borderBottomWidth: 3, borderBottomColor: BLUE },
-  tabText:           { color: '#888', fontSize: 12, fontWeight: '600' },
-  tabTextActive:     { color: BLUE },
-  scroll:            { padding: 16, paddingBottom: 40 },
-  formCard:          { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 16, elevation: 2, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
-  formTitle:         { fontSize: 15, fontWeight: '700', color: BLUE, marginBottom: 14 },
-  fieldLabel:        { fontSize: 11, fontWeight: '700', color: '#888', marginBottom: 4, marginTop: 10, letterSpacing: 0.5 },
-  input:             { borderWidth: 1, borderColor: '#dde3f0', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: '#1a1a2e', backgroundColor: '#fafbff' },
-  pickerRow:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#dde3f0', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#fafbff' },
-  pickerDisabled:    { backgroundColor: '#f0f0f0', opacity: 0.6 },
-  pickerText:        { fontSize: 15, color: '#1a1a2e' },
-  pickerPlaceholder: { color: '#aaa' },
-  pickerArrow:       { fontSize: 18, color: '#aaa' },
-  addBtn:            { backgroundColor: BLUE, borderRadius: 8, paddingVertical: 13, alignItems: 'center', marginTop: 18 },
-  addBtnDisabled:    { opacity: 0.6 },
-  addBtnText:        { color: '#fff', fontWeight: '700', fontSize: 15 },
-  listCard:          { backgroundColor: '#fff', borderRadius: 12, padding: 16, elevation: 2, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
-  listTitle:         { fontSize: 13, fontWeight: '700', color: '#555', marginBottom: 12 },
-  listItem:          { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  listItemName:      { flex: 1, fontSize: 14, color: '#1a1a2e', fontWeight: '500' },
-  listItemSub:       { fontSize: 12, color: '#888', marginRight: 8 },
-  listItemCode:      { fontSize: 11, color: '#aaa', backgroundColor: '#f0f4ff', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  emptyText:         { color: '#aaa', textAlign: 'center', marginTop: 20, fontSize: 14 },
-  progressText:      { color: '#1a3a8f', textAlign: 'center', marginTop: 8, fontSize: 13, fontWeight: '600' },
-  clearBanner:       { backgroundColor: '#c0392b', paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' },
-  clearBannerDisabled: { opacity: 0.6 },
-  clearBannerText:   { color: '#fff', fontWeight: '700', fontSize: 13 },
-  loadMoreBtn:       { marginTop: 16, paddingVertical: 12, borderRadius: 8, backgroundColor: '#f0f4ff', alignItems: 'center' },
-  loadMoreText:      { color: BLUE, fontWeight: '600', fontSize: 14 },
-  modalSafe:         { flex: 1, backgroundColor: '#fff' },
-  modalHeader:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  modalCancel:       { color: BLUE, fontSize: 15, width: 60 },
-  modalTitle:        { flex: 1, textAlign: 'center', fontWeight: '700', fontSize: 16, color: '#1a1a2e' },
-  searchInput:       { margin: 12, borderWidth: 1, borderColor: '#dde3f0', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
-  modalItem:         { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
-  modalItemText:     { fontSize: 15, color: '#1a1a2e' },
+  safe: { flex: 1, backgroundColor: colors.bg },
+
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md, paddingVertical: 14,
+  },
+  headerBtn: { width: 40, alignItems: 'center' },
+  headerTitle: { flex: 1, textAlign: 'center', ...typography.headlineSm, color: '#fff' },
+
+  progressBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.primaryContainer,
+    paddingVertical: 8, paddingHorizontal: spacing.md,
+  },
+  progressText: { ...typography.labelMd, color: colors.primary },
+
+  clearBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.error, paddingVertical: 9,
+  },
+  clearBannerText: { ...typography.labelMd, color: '#fff', fontWeight: '700' },
+
+  tabBar: {
+    flexDirection: 'row', backgroundColor: colors.surface,
+    borderBottomWidth: 1, borderBottomColor: colors.outlineVariant,
+  },
+  tab: { flex: 1, paddingVertical: 10, alignItems: 'center' },
+  tabActive: { borderBottomWidth: 2.5, borderBottomColor: colors.primary },
+  tabText: { ...typography.labelSm, color: colors.muted },
+  tabTextActive: { ...typography.labelSm, color: colors.primary, fontWeight: '700' },
+  tabCount: { fontSize: 10, color: colors.muted, marginTop: 2 },
+  tabCountActive: { color: colors.primary },
+
+  filterRow: {
+    flexDirection: 'row', gap: 8,
+    paddingHorizontal: spacing.md, paddingVertical: 10,
+    backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.outlineVariant,
+  },
+  filterChip: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    borderWidth: 1, borderColor: colors.primary, borderRadius: radius.xl,
+    paddingHorizontal: 10, paddingVertical: 6, backgroundColor: colors.primaryContainer,
+  },
+  filterChipText: { flex: 1, ...typography.labelSm, color: colors.primary, marginRight: 4 },
+
+  addFormScroll: { maxHeight: 200 },
+  addFormContent: { padding: spacing.md, paddingBottom: 0 },
+  card: {
+    backgroundColor: colors.surface, borderRadius: radius.lg,
+    padding: spacing.md, borderWidth: 1, borderColor: colors.outlineVariant, ...shadows.sm,
+  },
+  cardTitle: { ...typography.labelMd, color: colors.primary, fontWeight: '700', marginBottom: spacing.sm },
+  fieldLabel: { ...typography.labelSm, color: colors.muted, marginBottom: 4, marginTop: 8 },
+  input: {
+    borderWidth: 1, borderColor: colors.outline, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: 10,
+    ...typography.bodyMd, color: colors.onSurface, backgroundColor: colors.surfaceContainerLow,
+  },
+  addBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.primary, borderRadius: radius.md,
+    paddingVertical: 12, marginTop: spacing.md,
+  },
+  addBtnText: { ...typography.labelMd, color: '#fff', fontWeight: '700' },
+
+  listContent: { padding: spacing.md, paddingBottom: 40 },
+  listItem: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.surface, borderRadius: radius.md,
+    paddingVertical: 11, paddingHorizontal: spacing.md,
+    marginBottom: 6, borderWidth: 1, borderColor: colors.outlineVariant,
+  },
+  listDot: {
+    width: 6, height: 6, borderRadius: 3,
+    backgroundColor: colors.primary, marginRight: spacing.sm, opacity: 0.5,
+  },
+  listItemName: { ...typography.bodyMd, color: colors.onSurface, flex: 1 },
+  codeBadge: {
+    backgroundColor: colors.primaryContainer, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 2,
+  },
+  codeText: { ...typography.labelSm, color: colors.primary },
+
+  loadMoreBtn: {
+    paddingVertical: 12, borderRadius: radius.md,
+    backgroundColor: colors.surfaceContainerLow, alignItems: 'center',
+    borderWidth: 1, borderColor: colors.outline, marginTop: 4,
+  },
+  loadMoreText: { ...typography.labelMd, color: colors.primary },
+  emptyText: { ...typography.bodyMd, color: colors.muted, textAlign: 'center', marginTop: spacing.xl },
+
+  modalSafe: { flex: 1, backgroundColor: colors.surface },
+  modalHeader: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md, paddingVertical: 14,
+  },
+  modalHeaderTitle: { flex: 1, textAlign: 'center', ...typography.headlineSm, color: '#fff' },
+  searchWrap: {
+    flexDirection: 'row', alignItems: 'center',
+    margin: spacing.md, paddingHorizontal: spacing.md, paddingVertical: 10,
+    borderWidth: 1, borderColor: colors.outline, borderRadius: radius.md,
+    backgroundColor: colors.surfaceContainerLow,
+  },
+  searchInput: { flex: 1, ...typography.bodyMd, color: colors.onSurface },
+  modalItem: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: spacing.md, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: colors.outlineVariant,
+  },
+  modalItemText: { flex: 1, ...typography.bodyMd, color: colors.onSurface },
 });

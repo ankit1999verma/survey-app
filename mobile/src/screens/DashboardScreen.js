@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system/legacy';
 import WheelPickerField from '../components/WheelPickerField';
 import * as Sharing from 'expo-sharing';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { AuthContext } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
@@ -231,18 +232,16 @@ const DashboardScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.surfaceContainer} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       {/* App Header */}
       <View style={styles.headerBar}>
         <View style={styles.headerLeft}>
-          <View style={styles.iconBox}>
-            <Feather name="bar-chart-2" size={20} color={colors.primary} />
-          </View>
-          <Text style={styles.appName}>GP Survey Pro</Text>
+          <Feather name="bar-chart-2" size={22} color="#fff" />
+          <Text style={styles.appName}>GramSync Pro</Text>
         </View>
         <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
-          <Feather name="log-out" size={20} color={colors.onSurfaceVariant} />
+          <Feather name="log-out" size={20} color="rgba(255,255,255,0.85)" />
         </TouchableOpacity>
       </View>
 
@@ -261,7 +260,11 @@ const DashboardScreen = ({ navigation }) => {
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Hero Card */}
-        <View style={styles.heroCard}>
+        <LinearGradient
+          colors={[colors.primary, colors.primaryDark]}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          style={styles.heroCard}
+        >
           <View style={styles.heroHeader}>
             <Text style={styles.heroTitle}>Ready to collect?</Text>
             <Feather name="map-pin" size={24} color="rgba(255,255,255,0.8)" />
@@ -304,7 +307,7 @@ const DashboardScreen = ({ navigation }) => {
               })()}
             </View>
           )}
-        </View>
+        </LinearGradient>
 
         {/* Stats Row */}
         <View style={styles.statsRow}>
@@ -500,15 +503,10 @@ const styles = StyleSheet.create({
   headerBar: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: spacing.md, paddingVertical: 14,
-    backgroundColor: colors.surfaceContainer,
+    backgroundColor: colors.primary,
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  iconBox: {
-    width: 36, height: 36, borderRadius: radius.md,
-    backgroundColor: colors.primaryContainer,
-    justifyContent: 'center', alignItems: 'center'
-  },
-  appName: { ...typography.headlineSm, color: colors.onSurface, letterSpacing: -0.3 },
+  appName: { ...typography.headlineSm, color: '#fff', letterSpacing: -0.3 },
   logoutBtn: { padding: 8 },
 
   // Sync bar
@@ -525,8 +523,7 @@ const styles = StyleSheet.create({
 
   // Hero
   heroCard: {
-    backgroundColor: colors.primary, 
-    borderRadius: radius.xl,
+    borderRadius: radius.xxl,
     padding: spacing.lg, 
     marginBottom: spacing.md,
     ...shadows.primary,
@@ -544,13 +541,14 @@ const styles = StyleSheet.create({
   heroBtnText: { color: colors.primary, fontWeight: '700', fontSize: 16 },
 
   // Stats
-  statsRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md },
+  statsRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
   statCard: {
     flex: 1, backgroundColor: colors.white,
-    borderRadius: radius.lg, padding: spacing.md,
-    ...shadows.sm,
+    borderRadius: radius.xl, padding: spacing.md,
+    borderWidth: 1, borderColor: colors.outlineVariant,
+    ...shadows.md,
   },
-  statCardWarning: { backgroundColor: '#FFFBEB' },
+  statCardWarning: { backgroundColor: '#FFFBEB', borderColor: '#FEF3C7' },
   statIconBox: {
     width: 32, height: 32, borderRadius: radius.md,
     backgroundColor: colors.primaryContainer,
@@ -571,8 +569,9 @@ const styles = StyleSheet.create({
   // User Card
   userCard: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: colors.white, borderRadius: radius.lg,
-    padding: spacing.md, marginBottom: spacing.md, gap: spacing.md,
+    backgroundColor: colors.white, borderRadius: radius.xl,
+    padding: spacing.md, marginBottom: spacing.lg, gap: spacing.md,
+    borderWidth: 1, borderColor: colors.outlineVariant,
     ...shadows.sm,
   },
   userAvatar: {
@@ -588,8 +587,9 @@ const styles = StyleSheet.create({
   actionBtn: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.white,
-    borderRadius: radius.lg, padding: spacing.md,
+    borderRadius: radius.xl, padding: spacing.md,
     marginBottom: spacing.sm, gap: spacing.md,
+    borderWidth: 1, borderColor: colors.outlineVariant,
     ...shadows.sm,
   },
   actionIconBox: {
@@ -630,12 +630,18 @@ const styles = StyleSheet.create({
     fontSize: 20, fontWeight: '700', color: colors.onSurface
   },
   downloadBtn: {
-    backgroundColor: colors.primary, paddingVertical: 14, borderRadius: 12,
-    flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    borderRadius: radius.xl,
+    justifyContent: 'center',
     marginTop: spacing.xl,
+    ...shadows.primary,
   },
   downloadBtnText: {
-    color: '#fff', fontSize: 16, fontWeight: '700', marginLeft: 8
+    ...typography.labelMd,
+    color: '#fff', fontSize: 16, marginLeft: 8
   },
 });
 

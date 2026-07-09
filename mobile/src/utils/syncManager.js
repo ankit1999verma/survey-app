@@ -94,45 +94,53 @@ export const syncMasterData = async (onProgress) => {
   // Step 3 + 4: Fetch blocks and GPs using parallel predefined chunks
   const fetchChunksInParallel = async (endpoint, localMaxId, serverMaxId, step, chunkSize, onChunk) => {
     if (serverMaxId <= localMaxId) return 0;
-    
+
     // 1. Generate predefined chunks
     const chunks = [];
     for (let id = localMaxId; id < serverMaxId; id += chunkSize) {
       chunks.push({ startId: id, endId: id + chunkSize });
     }
-    
+
     let totalFetched = 0;
     let chunksProcessed = 0;
-    const CONCURRENCY = 5;
-    
-    // 2. Process queue with retries
+    const CONCURRENCY = 2; // Reduced to avoid overwhelming server
+    const MAX_RETRIES = 5;
+
+    // 2. Process queue with exponential backoff retries
     let i = 0;
     const processNext = async () => {
       while (i < chunks.length) {
         const chunk = chunks[i++];
         let success = false;
-        let retries = 3;
+        let retries = MAX_RETRIES;
+        let delay = 1000;
         while (!success && retries > 0) {
           try {
-            const res = await api.get(`${endpoint}?startId=${chunk.startId}&endId=${chunk.endId}`);
+            const res = await api.get(`${endpoint}?startId=${chunk.startId}&endId=${chunk.endId}`, { timeout: 60000 });
             const { content } = res.data;
             if (content && content.length > 0) {
               await onChunk(content);
               totalFetched += content.length;
             }
             chunksProcessed++;
-            // Approximate progress by chunks processed vs total chunks
             if (onProgress) onProgress({ step, done: chunksProcessed, total: chunks.length });
             success = true;
           } catch (e) {
             retries--;
-            if (retries === 0) throw new Error(`Failed to fetch ${endpoint} chunk ${chunk.startId}-${chunk.endId}`);
-            await new Promise(r => setTimeout(r, 1000)); // wait 1s before retry
+            if (retries === 0) {
+              // Skip failed chunk — don't crash entire sync
+              console.warn(`Skipping ${endpoint} chunk ${chunk.startId}-${chunk.endId} after ${MAX_RETRIES} retries:`, e?.message);
+              chunksProcessed++;
+              if (onProgress) onProgress({ step, done: chunksProcessed, total: chunks.length });
+            } else {
+              await new Promise(r => setTimeout(r, delay));
+              delay = Math.min(delay * 2, 8000); // exponential backoff, max 8s
+            }
           }
         }
       }
     };
-    
+
     // 3. Fire parallel workers
     const workers = [];
     for (let w = 0; w < CONCURRENCY; w++) {
@@ -142,16 +150,17 @@ export const syncMasterData = async (onProgress) => {
     return totalFetched;
   };
 
-  // Run blocks and GPs in parallel
-  const [blockCount, gpCount] = await Promise.all([
-    fetchChunksInParallel('/master/blocks', blockMaxId, maxBlockId || 0, 'blocks', 5000, async (chunk) => {
-      await saveMasterChunk({ states: [], districts: [], blocks: chunk, gramPanchayats: [] });
-    }),
-    fetchChunksInParallel('/master/gps', gpMaxId, maxGpId || 0, 'gps', 5000, async (chunk) => {
-      await saveMasterChunk({ states: [], districts: [], blocks: [], gramPanchayats: chunk });
-    }),
-  ]);
+  // Run blocks first (smaller dataset), then GPs sequentially to avoid memory pressure
+  const blockCount = await fetchChunksInParallel('/master/blocks', blockMaxId, maxBlockId || 0, 'blocks', 2000, async (chunk) => {
+    await saveMasterChunk({ states: [], districts: [], blocks: chunk, gramPanchayats: [] });
+  });
 
+  // GPs are huge (265k+), process with smaller chunks
+  const gpCount = await fetchChunksInParallel('/master/gps', gpMaxId, maxGpId || 0, 'gps', 2000, async (chunk) => {
+    await saveMasterChunk({ states: [], districts: [], blocks: [], gramPanchayats: chunk });
+  });
+
+  console.log(`Sync complete: ${blockCount} blocks, ${gpCount} GPs`);
   // Return the full local dataset
   return loadMasterData();
 };

@@ -9,7 +9,8 @@ import { AuthContext } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
 import { getAllSurveys } from '../utils/localDB';
 import api from '../utils/api';
-import { colors, spacing, radius } from '../theme';
+import { Feather } from '@expo/vector-icons';
+import { colors, spacing, radius, typography, shadows } from '../theme';
 
 const STATUS_COLORS = {
   YES:   { bg: '#d1fae5', text: '#065f46', label: 'SAVED' },
@@ -76,22 +77,31 @@ const SurveyListScreen = ({ navigation }) => {
           </View>
         </View>
         <Text style={styles.meta}>{item.blockName || '—'} › {item.districtName || '—'} › {item.stateName || '—'}</Text>
-        <Text style={styles.date}>{date}  {item.synced ? '✓ Synced' : '⏳ Pending sync'}</Text>
+        
+        <View style={styles.cardFooter}>
+          <Feather name="calendar" size={14} color={colors.muted} />
+          <Text style={styles.date}>{date}</Text>
+          <View style={{ flex: 1 }} />
+          <Feather name={item.synced ? "check-circle" : "clock"} size={14} color={item.synced ? colors.success : colors.secondary} />
+          <Text style={[styles.syncStatus, { color: item.synced ? colors.success : colors.secondaryDark }]}>
+            {item.synced ? 'Synced' : 'Pending Sync'}
+          </Text>
+        </View>
       </TouchableOpacity>
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
+          <Feather name="chevron-left" size={26} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.title}>Saved Surveys</Text>
-        <TouchableOpacity onPress={loadSurveys} style={styles.refreshBtn}>
-          <Text style={styles.refreshIcon}>↻</Text>
+        <TouchableOpacity onPress={loadSurveys} style={styles.headerBtn}>
+          <Feather name="refresh-cw" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
 
@@ -119,7 +129,9 @@ const SurveyListScreen = ({ navigation }) => {
           contentContainerStyle={surveys.length === 0 ? styles.emptyContainer : styles.listContent}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
-              <Text style={styles.emptyIcon}>📋</Text>
+              <View style={styles.emptyIconBox}>
+                <Feather name="file-text" size={40} color={colors.primary} />
+              </View>
               <Text style={styles.emptyText}>No saved surveys yet.</Text>
               <Text style={styles.emptySubText}>Start a new survey from the Dashboard.</Text>
             </View>
@@ -131,56 +143,62 @@ const SurveyListScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
+  container: { flex: 1, backgroundColor: colors.surfaceContainer },
 
   header: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.md, paddingVertical: 14,
-    backgroundColor: colors.surface || '#fff',
-    borderBottomWidth: 1, borderBottomColor: '#e2e8f0',
+    backgroundColor: colors.primary,
   },
-  backBtn: { padding: 8 },
-  backIcon: { fontSize: 22, color: colors.primary },
-  title: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', color: colors.onSurface },
-  refreshBtn: { padding: 8 },
-  refreshIcon: { fontSize: 22, color: colors.primary },
+  headerBtn: { width: 40, alignItems: 'center' },
+  title: { flex: 1, textAlign: 'center', ...typography.headlineSm, color: '#fff' },
 
   filterBar: {
-    flexDirection: 'row', paddingHorizontal: spacing.md, paddingVertical: 10,
-    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0'
+    flexDirection: 'row', paddingHorizontal: spacing.md, paddingVertical: 12,
+    backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.outlineVariant
   },
   filterBtn: {
-    flex: 1, paddingVertical: 8, alignItems: 'center',
-    borderRadius: 20, marginHorizontal: 4, backgroundColor: '#f1f5f9'
+    flex: 1, paddingVertical: 10, alignItems: 'center',
+    borderRadius: radius.xl, marginHorizontal: 4, backgroundColor: colors.surfaceContainerLow
   },
-  filterBtnActive: { backgroundColor: colors.primary },
-  filterText: { fontSize: 13, fontWeight: '600', color: '#64748b' },
+  filterBtnActive: { backgroundColor: colors.primary, ...shadows.sm },
+  filterText: { ...typography.labelMd, color: colors.muted },
   filterTextActive: { color: '#fff' },
 
-  listContent: { padding: spacing.md },
+  listContent: { padding: spacing.md, paddingBottom: spacing.xxl },
   emptyContainer: { flex: 1 },
 
   card: {
-    backgroundColor: '#fff', borderRadius: radius.md,
-    padding: spacing.md, marginBottom: spacing.md,
-    borderWidth: 1, borderColor: '#e2e8f0',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+    backgroundColor: '#fff', borderRadius: radius.xl,
+    padding: spacing.lg, marginBottom: spacing.md,
+    borderWidth: 1, borderColor: colors.outlineVariant,
+    ...shadows.sm,
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  gpName: { flex: 1, fontSize: 16, fontWeight: '700', color: colors.onSurface },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  gpName: { flex: 1, ...typography.headlineSm, color: colors.onSurface },
   badge: {
-    paddingHorizontal: 8, paddingVertical: 2,
-    borderRadius: 99, marginLeft: 8,
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: radius.md, marginLeft: 8,
   },
-  badgeText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
-  meta: { fontSize: 13, color: colors.muted, marginBottom: 4 },
-  date: { fontSize: 12, color: '#94a3b8' },
+  badgeText: { ...typography.labelSm },
+  meta: { ...typography.bodyMd, color: colors.onSurfaceVariant, marginBottom: 12 },
+  
+  cardFooter: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.surfaceContainerLow
+  },
+  date: { ...typography.labelMd, color: colors.muted },
+  syncStatus: { ...typography.labelMd },
 
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
-  emptyIcon: { fontSize: 56, marginBottom: spacing.md },
-  emptyText: { fontSize: 18, fontWeight: '700', color: colors.onSurface, marginBottom: 4 },
-  emptySubText: { fontSize: 14, color: colors.muted, textAlign: 'center' },
+  emptyIconBox: {
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: colors.primaryContainer,
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  emptyText: { ...typography.headlineSm, color: colors.onSurface, marginBottom: 4 },
+  emptySubText: { ...typography.bodyMd, color: colors.muted, textAlign: 'center' },
 });
 
 export default SurveyListScreen;

@@ -506,18 +506,92 @@ export async function getGramPanchayats(blockId) {
   return await d.getAllAsync('SELECT * FROM master_gps WHERE blockId = ? ORDER BY name ASC', [blockId]);
 }
 
-/** Legacy (Kept for syncManager but removed GP bulk load) */
+/** Legacy — kept for backward compat, returns only states+districts for memory safety */
 export async function loadMasterData() {
   if (isWeb) {
     const data = await getWebItem('master_data');
     return data ? JSON.parse(data) : null;
   }
   const d = await getDB();
-  // Return empty arrays for blocks/GPs to prevent out-of-memory
   const states = await d.getAllAsync('SELECT * FROM master_states ORDER BY name ASC');
-  const districts = await d.getAllAsync('SELECT * FROM master_districts ORDER BY name ASC');
   if (!states.length) return null;
+  const districts = await d.getAllAsync('SELECT * FROM master_districts ORDER BY name ASC');
   return { states, districts, blocks: [], gramPanchayats: [] };
+}
+
+/** Count records per table (for MasterDataScreen badges) */
+export async function getMasterCounts() {
+  if (isWeb) {
+    const data = await getWebItem('master_data');
+    const parsed = data ? JSON.parse(data) : {};
+    return {
+      states: (parsed.states || []).length,
+      districts: (parsed.districts || []).length,
+      blocks: (parsed.blocks || []).length,
+      gps: (parsed.gramPanchayats || []).length,
+    };
+  }
+  const d = await getDB();
+  const [s, dist, b, gp] = await Promise.all([
+    d.getFirstAsync('SELECT COUNT(*) as c FROM master_states'),
+    d.getFirstAsync('SELECT COUNT(*) as c FROM master_districts'),
+    d.getFirstAsync('SELECT COUNT(*) as c FROM master_blocks'),
+    d.getFirstAsync('SELECT COUNT(*) as c FROM master_gps'),
+  ]);
+  return { states: s?.c ?? 0, districts: dist?.c ?? 0, blocks: b?.c ?? 0, gps: gp?.c ?? 0 };
+}
+
+/**
+ * Paginated filtered query for MasterDataScreen list.
+ * tab: 0=states, 1=districts, 2=blocks, 3=gps
+ * parentId: stateId / districtId / blockId filter
+ * search: optional text filter
+ * limit/offset: pagination
+ */
+export async function getFilteredMasterData({ tab, parentId, search = '', limit = 50, offset = 0 }) {
+  const d = await getDB();
+  const like = `%${search}%`;
+  if (tab === 0) {
+    return d.getAllAsync(
+      'SELECT * FROM master_states WHERE name LIKE ? ORDER BY name ASC LIMIT ? OFFSET ?',
+      [like, limit, offset]
+    );
+  }
+  if (tab === 1) {
+    if (parentId) {
+      return d.getAllAsync(
+        'SELECT * FROM master_districts WHERE stateId = ? AND name LIKE ? ORDER BY name ASC LIMIT ? OFFSET ?',
+        [parentId, like, limit, offset]
+      );
+    }
+    return d.getAllAsync(
+      'SELECT * FROM master_districts WHERE name LIKE ? ORDER BY name ASC LIMIT ? OFFSET ?',
+      [like, limit, offset]
+    );
+  }
+  if (tab === 2) {
+    if (parentId) {
+      return d.getAllAsync(
+        'SELECT * FROM master_blocks WHERE districtId = ? AND name LIKE ? ORDER BY name ASC LIMIT ? OFFSET ?',
+        [parentId, like, limit, offset]
+      );
+    }
+    return d.getAllAsync(
+      'SELECT * FROM master_blocks WHERE name LIKE ? ORDER BY name ASC LIMIT ? OFFSET ?',
+      [like, limit, offset]
+    );
+  }
+  // tab === 3 (GPs)
+  if (parentId) {
+    return d.getAllAsync(
+      'SELECT * FROM master_gps WHERE blockId = ? AND name LIKE ? ORDER BY name ASC LIMIT ? OFFSET ?',
+      [parentId, like, limit, offset]
+    );
+  }
+  return d.getAllAsync(
+    'SELECT * FROM master_gps WHERE name LIKE ? ORDER BY name ASC LIMIT ? OFFSET ?',
+    [like, limit, offset]
+  );
 }
 
 /** Legacy — kept for backward compat, now delegates to saveMasterChunk */

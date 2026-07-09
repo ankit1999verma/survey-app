@@ -9,6 +9,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, radius, typography, shadows } from '../theme';
 import api from '../utils/api';
 import { useNavigation } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const RegisterScreen = () => {
   const navigation = useNavigation();
@@ -50,8 +51,8 @@ const RegisterScreen = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.surfaceContainerLow} />
+    <LinearGradient colors={[colors.surfaceContainerLow, '#E2E8F0', '#CBD5E1']} style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
       <KeyboardAvoidingView 
         style={styles.keyboardView} 
@@ -72,10 +73,10 @@ const RegisterScreen = () => {
           {/* Logo / Title Area */}
           <View style={styles.brandContainer}>
             <View style={styles.logoBox}>
-              <Feather name="briefcase" size={36} color={colors.primary} />
+              <Feather name="map-pin" size={36} color={colors.primary} />
             </View>
-            <Text style={styles.appName}>Register Company</Text>
-            <Text style={styles.appSubtitle}>Join our SaaS Platform</Text>
+            <Text style={styles.appName}>GramSync Pro</Text>
+            <Text style={styles.appSubtitle}>Register for Field Access</Text>
           </View>
 
           {/* Registration Card */}
@@ -176,14 +177,19 @@ const RegisterScreen = () => {
               )}
             </TouchableOpacity>
           </View>
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>Secure Field Ops © 2026</Text>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surfaceContainerLow },
+  container: {
+    flex: 1,
+  },
   keyboardView: { flex: 1 },
   scrollContent: { flexGrow: 1, paddingHorizontal: spacing.lg, paddingTop: 80, paddingBottom: 40 },
 
@@ -202,33 +208,36 @@ const styles = StyleSheet.create({
   },
   logoBox: {
     width: 72, height: 72,
-    backgroundColor: colors.white,
-    borderRadius: 20,
-    justifyContent: 'center', alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.md,
     marginBottom: spacing.md,
     ...shadows.md,
   },
   appName: {
-    ...typography.headlineMd,
-    fontWeight: '800',
-    color: colors.primary,
-    letterSpacing: -0.5,
+    ...typography.displayLg,
+    color: colors.primaryDark,
+    textAlign: 'center',
   },
   appSubtitle: {
-    ...typography.labelLg,
+    ...typography.bodyMd,
     color: colors.onSurfaceVariant,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    marginTop: 4,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+    letterSpacing: 1,
   },
 
   // Card
   card: {
-    backgroundColor: colors.white,
-    borderRadius: 24,
+    backgroundColor: colors.surface,
+    borderRadius: radius.xxl,
     padding: spacing.xl,
     marginBottom: spacing.xl,
     ...shadows.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
   },
 
   // Fields
@@ -259,14 +268,30 @@ const styles = StyleSheet.create({
 
   // Buttons
   loginBtn: {
-    height: 56, backgroundColor: colors.primary,
-    borderRadius: radius.lg,
-    justifyContent: 'center', alignItems: 'center',
-    marginBottom: spacing.lg, marginTop: spacing.sm,
-    ...shadows.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    borderRadius: radius.xl,
+    justifyContent: 'center',
+    marginTop: spacing.xl,
+    ...shadows.primary,
   },
   loginBtnDisabled: { opacity: 0.7 },
-  loginBtnText: { color: colors.white, ...typography.titleMd, fontWeight: '700' },
+  loginBtnText: {
+    ...typography.labelMd,
+    color: colors.white,
+    marginLeft: spacing.sm,
+    fontSize: 16,
+  },
+  footer: {
+    alignItems: 'center',
+    marginTop: spacing.xl,
+  },
+  footerText: {
+    ...typography.bodySm,
+    color: colors.onSurfaceVariant,
+  },
 });
 
 export default RegisterScreen;

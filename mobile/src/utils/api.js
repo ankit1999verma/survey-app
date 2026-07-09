@@ -6,6 +6,7 @@ const BASE_URL = 'https://gpsurvey.tivarax.in/api';
 
 const api = axios.create({
   baseURL: BASE_URL,
+  timeout: 30000, // 30s timeout per request
 });
 
 api.interceptors.request.use(

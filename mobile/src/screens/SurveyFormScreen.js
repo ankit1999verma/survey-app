@@ -35,10 +35,14 @@ const CURR_LOC_ITEMS = opts(['SAME AS ORIGINAL LOCATION', 'NOT FOUND', 'OTHER (s
 const HOURS_ITEMS = opts(Array.from({length: 25}, (_, i) => String(i)));
 
 // ── Shared components ─────────────────────────────────────────────────────────
-const SectionCard = ({ title, color = colors.primary, children }) => (
-  <View style={[styles.sectionCard, { borderLeftColor: color }]}>
-    {title ? <Text style={[styles.sectionTag, { color }]}>{title}</Text> : null}
-    {children}
+const SectionCard = ({ title, children, color }) => (
+  <View style={[styles.sectionCard, { borderTopColor: color }]}>
+    <View style={styles.sectionHeader}>
+      <Text style={[styles.sectionTitle, { color }]}>{title}</Text>
+    </View>
+    <View style={styles.sectionContent}>
+      {children}
+    </View>
   </View>
 );
 
@@ -332,18 +336,6 @@ export default function SurveyFormScreen({ route, navigation }) {
 
   const set = useCallback((k, v) => setForm(f => ({ ...f, [k]: v })), []);
 
-  const handleStateChange = (val) => {
-    setForm(f => ({ ...f, stateId: val, stateName: states.find(x => x.id === val)?.name || '', districtId: null, districtName: '', blockId: null, blockName: '', gramPanchayatId: null, gramPanchayatName: '', gramPanchayatCode: '' }));
-  };
-
-  const handleDistrictChange = (val) => {
-    setForm(f => ({ ...f, districtId: val, districtName: districts.find(x => x.id === val)?.name || '', blockId: null, blockName: '', gramPanchayatId: null, gramPanchayatName: '', gramPanchayatCode: '' }));
-  };
-
-  const handleBlockChange = (val) => {
-    setForm(f => ({ ...f, blockId: val, blockName: blocks.find(x => x.id === val)?.name || '', gramPanchayatId: null, gramPanchayatName: '', gramPanchayatCode: '' }));
-  };
-
   const captureGps = async (latKey, longKey) => {
     setGpsLoading(p => ({ ...p, [latKey]: true }));
     try {
@@ -510,7 +502,7 @@ export default function SurveyFormScreen({ route, navigation }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Feather name="chevron-left" size={28} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>BSNL GP Survey</Text>
+        <Text style={styles.headerTitle}>GramSync Pro</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -773,30 +765,29 @@ export default function SurveyFormScreen({ route, navigation }) {
       </KeyboardAvoidingView>
 
       {/* Fixed Bottom Action Bar */}
-      <View style={[styles.footerBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+      <View style={styles.actionBar}>
         <TouchableOpacity
-          style={[styles.submitBtn, styles.draftBtn, { flex: 1 }, saving && { opacity: 0.7 }]}
-          onPress={() => handleSubmit(true)}
-          disabled={saving}
-          activeOpacity={0.8}
-        >
-          {saving
-            ? <ActivityIndicator color={colors.primary} />
-            : <Text style={styles.draftText}>SAVE AS DRAFT</Text>
-          }
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.submitBtn, { flex: 1 }, saving && { opacity: 0.7 }]}
+          style={[styles.submitBtn, saving && { opacity: 0.7 }]}
           onPress={() => handleSubmit(false)}
           disabled={saving}
           activeOpacity={0.8}
         >
           {saving
             ? <ActivityIndicator color="#fff" />
-            : <Text style={styles.submitText}>SAVE OFFLINE</Text>
+            : <><Feather name="check-circle" size={18} color="#fff" /><Text style={styles.submitText}>SUBMIT</Text></>
           }
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.draftBtn, saving && { opacity: 0.7 }]}
+          onPress={() => handleSubmit(true)}
+          disabled={saving}
+          activeOpacity={0.8}
+        >
+          <Feather name="save" size={18} color={colors.primaryDark} />
+          <Text style={styles.draftText}>DRAFT</Text>
+        </TouchableOpacity>
       </View>
+
       {/* Add Master Data Modal */}
       <Modal visible={!!addModal} transparent animationType="fade">
         <View style={styles.modalBg}>
@@ -837,21 +828,29 @@ const styles = StyleSheet.create({
   headerTitle: { ...typography.headlineSm, color: '#fff', letterSpacing: 0.3 },
 
   scroll: { flex: 1 },
-  body: { padding: spacing.md, gap: 0 },
-
-  // Section card
+  body: { paddingHorizontal: spacing.md, paddingTop: spacing.md },
+  
   sectionCard: {
-    backgroundColor: colors.white,
-    borderRadius: 16,
-    borderLeftWidth: 5,
-    padding: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.lg,
     marginBottom: spacing.xl,
-    ...shadows.md,
+    borderTopWidth: 4,
+    ...shadows.sm,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
   },
-  sectionTag: {
-    ...typography.labelSm, letterSpacing: 1.4,
-    marginBottom: 14,
+  sectionHeader: {
+    marginBottom: spacing.md,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.surfaceContainerLow,
   },
+  sectionTitle: { ...typography.labelMd, letterSpacing: 1 },
+  sectionContent: { gap: spacing.sm },
+
   hint: {
     ...typography.labelSm, color: colors.placeholder, 
     marginBottom: 12, marginTop: -6, fontStyle: 'italic',
@@ -954,26 +953,40 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceContainerLow,
   },
 
-  footerBar: {
-    flexDirection: 'row', gap: 12,
+  actionBar: {
+    flexDirection: 'row',
+    gap: 10,
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    paddingVertical: spacing.sm,
     backgroundColor: colors.surfaceContainerLow,
-    borderTopWidth: 1, borderTopColor: colors.outlineVariant,
+    borderTopWidth: 1,
+    borderTopColor: colors.outlineVariant,
   },
   submitBtn: {
     flex: 1,
-    backgroundColor: colors.primary, borderRadius: radius.lg,
-    paddingVertical: 18, alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: colors.primary,
+    borderRadius: radius.lg,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
     ...shadows.primary,
   },
   submitText: {
     color: '#fff', ...typography.labelMd, fontWeight: '800', letterSpacing: 1.2,
   },
   draftBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
     backgroundColor: colors.white,
     borderWidth: 1.5,
     borderColor: colors.primary,
+    borderRadius: radius.lg,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
     ...shadows.sm,
   },
   draftText: {
