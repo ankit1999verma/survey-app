@@ -15,10 +15,16 @@ export const AuthProvider = ({ children }) => {
       const res = await api.post('/auth/login', { username, password });
       
       if (res.data.token) {
-        setUserInfo(res.data.user);
-        setUserToken(res.data.token);
-        await AsyncStorage.setItem('userInfo', JSON.stringify(res.data.user));
+        const userObj = {
+          username: res.data.username,
+          role: res.data.role,
+          companyId: res.data.companyId
+        };
+        await AsyncStorage.setItem('userInfo', JSON.stringify(userObj));
         await AsyncStorage.setItem('userToken', res.data.token);
+        
+        setUserInfo(userObj);
+        setUserToken(res.data.token);
       }
     } catch (error) {
       console.error(`Login error: ${error}`);
