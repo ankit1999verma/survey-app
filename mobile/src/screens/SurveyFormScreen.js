@@ -222,15 +222,15 @@ export default function SurveyFormScreen({ route, navigation }) {
   // Derived lists
   const states = useMemo(() => masterData?.states ?? [], [masterData]);
   const districts = useMemo(() => form.stateId
-    ? (masterData?.districts ?? []).filter(d => d.stateId === form.stateId) : [], 
+    ? (masterData?.districts ?? []).filter(d => d.stateId == form.stateId) : [], 
     [masterData, form.stateId]
   );
   const blocks = useMemo(() => form.districtId
-    ? (masterData?.blocks ?? []).filter(b => b.districtId === form.districtId) : [],
+    ? (masterData?.blocks ?? []).filter(b => b.districtId == form.districtId) : [],
     [masterData, form.districtId]
   );
   const gps = useMemo(() => form.blockId
-    ? (masterData?.gramPanchayats ?? []).filter(g => g.blockId === form.blockId) : [],
+    ? (masterData?.gramPanchayats ?? []).filter(g => g.blockId == form.blockId) : [],
     [masterData, form.blockId]
   );
 
