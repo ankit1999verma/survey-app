@@ -36,22 +36,21 @@ public class SurveyController {
     }
     @GetMapping("/list")
     public ResponseEntity<?> listSurveys(
-            @RequestParam(defaultValue = "1970-01-01T00:00:00") String afterDate,
+            @RequestParam(defaultValue = "0") Long afterId,
             @RequestParam(defaultValue = "1000") int size,
             @RequestHeader("Authorization") String authHeader) {
         try {
             Long userId = Long.parseLong(authHeader.replace("Bearer dummy-jwt-token-", ""));
-            java.time.LocalDateTime date = java.time.LocalDateTime.parse(afterDate);
             
-            var result = surveyRepo.findByUserIdAndCreatedAtGreaterThanOrderByCreatedAtAsc(
-                userId, date, org.springframework.data.domain.PageRequest.of(0, size));
+            var result = surveyRepo.findByUserIdAndIdGreaterThanOrderByIdAsc(
+                userId, afterId, org.springframework.data.domain.PageRequest.of(0, size));
                 
             java.util.Map<String, Object> data = new java.util.HashMap<>();
             data.put("content", result.getContent());
             data.put("hasMore", result.hasNext());
-            data.put("lastDate", result.getContent().isEmpty() ? afterDate :
-                    result.getContent().get(result.getContent().size() - 1).getCreatedAt().toString());
-            data.put("totalElements", surveyRepo.countByUserIdAndCreatedAtGreaterThan(userId, date));
+            data.put("lastId", result.getContent().isEmpty() ? afterId :
+                    result.getContent().get(result.getContent().size() - 1).getId());
+            data.put("totalElements", surveyRepo.countByUserIdAndIdGreaterThan(userId, afterId));
             
             return ResponseEntity.ok(data);
         } catch (Exception e) {

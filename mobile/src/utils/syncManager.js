@@ -21,7 +21,14 @@ export const syncSurveys = async () => {
   const pending = await getUnsyncedSurveys();
   if (pending.length === 0) return { count: 0, status: 'Nothing to sync' };
 
-  const res = await api.post('/survey/sync', { surveys: pending });
+  // Fix date strings for Jackson LocalDateTime parsing (replace space with T)
+  const formattedPending = pending.map(s => ({
+    ...s,
+    createdAt: s.createdAt ? s.createdAt.replace(' ', 'T') : undefined,
+    syncedAt: s.syncedAt ? s.syncedAt.replace(' ', 'T') : undefined,
+  }));
+
+  const res = await api.post('/survey/sync', { surveys: formattedPending });
   if (res.status === 200 || res.status === 201) {
     const syncedUuids = res.data.synced ?? pending.map(s => s.uuid);
     await markSynced(syncedUuids);

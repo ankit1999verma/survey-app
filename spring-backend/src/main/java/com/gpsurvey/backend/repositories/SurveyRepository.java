@@ -11,9 +11,9 @@ public interface SurveyRepository extends JpaRepository<Survey, Long> {
     Optional<Survey> findByUuid(String uuid);
     List<Survey> findByCompanyId(Long companyId);
 
-    // Mobile App Cursor Pagination (Date-based)
-    Page<Survey> findByUserIdAndCreatedAtGreaterThanOrderByCreatedAtAsc(Long userId, LocalDateTime date, Pageable pageable);
-    long countByUserIdAndCreatedAtGreaterThan(Long userId, LocalDateTime date);
+    // Mobile App Cursor Pagination (ID-based)
+    Page<Survey> findByUserIdAndIdGreaterThanOrderByIdAsc(Long userId, Long id, Pageable pageable);
+    long countByUserIdAndIdGreaterThan(Long userId, Long id);
 
     // Admin Panel Cursor Pagination (ID-based)
     Page<Survey> findByIdGreaterThanOrderByIdAsc(Long id, Pageable pageable);
