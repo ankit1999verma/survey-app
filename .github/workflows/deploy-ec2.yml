@@ -1,0 +1,265 @@
+name: Deploy GPSurvey to EC2 (Blue/Green)
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "spring-backend/**"
+      - "scripts/**"
+      - ".github/workflows/deploy-ec2.yml"
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy (leave blank for main)'
+        required: false
+        default: 'main'
+      use_blue_green:
+        description: 'Use blue/green (zero-downtime). Set to false for single instance.'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      WORKDIR: spring-backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || 'main' }}
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Build JAR
+        working-directory: ${{ env.WORKDIR }}
+        run: |
+          chmod +x mvnw
+          ./mvnw -DskipTests clean package
+
+      - name: Prepare deployment files
+        run: |
+          mkdir -p deploy-staging
+          JAR_PATH=$(ls -1 ${WORKDIR}/target/*.jar | grep -v '\.original$' | head -n1)
+          if [[ -z "${JAR_PATH}" ]]; then
+            echo "No jar found" >&2
+            exit 1
+          fi
+          cp "${JAR_PATH}" deploy-staging/app.jar
+          cp scripts/blue_green_deploy.sh deploy-staging/
+          chmod +x deploy-staging/blue_green_deploy.sh
+          echo "Prepared: $(ls -lh deploy-staging/)"
+
+      - name: Verify files exist
+        run: |
+          echo "Verifying deployment files..."
+          ls -lh deploy-staging/
+          test -f deploy-staging/app.jar || (echo "app.jar not found!" && exit 1)
+          test -f deploy-staging/blue_green_deploy.sh || (echo "blue_green_deploy.sh not found!" && exit 1)
+          test -f scripts/ec2_setup.sh || (echo "ec2_setup.sh not found!" && exit 1)
+          echo "All files verified ✓"
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PREPROD_EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.PREPROD_EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Check file sizes
+        run: |
+          echo "File sizes:"
+          ls -lh deploy-staging/
+          du -h deploy-staging/app.jar deploy-staging/blue_green_deploy.sh scripts/ec2_setup.sh
+          JAR_SIZE=$(du -m deploy-staging/app.jar | cut -f1)
+          echo "JAR size: ${JAR_SIZE}MB"
+
+      - name: Check EC2 disk space and prepare directory
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            ${{ secrets.PREPROD_EC2_USER }}@${{ secrets.PREPROD_EC2_HOST }} \
+            "mkdir -p ~/deploy && \
+             chmod 755 ~/deploy && \
+             echo '=== Disk Space ===' && \
+             df -h ~ && \
+             echo '=== Directory Info ===' && \
+             ls -la ~/deploy/ && \
+             echo '=== Available Space ===' && \
+             df -h ~ | tail -1 | awk '{print \"Available: \" \$4}'"
+
+      - name: Copy JAR file to EC2
+        run: |
+          echo "Copying app.jar using rsync..."
+          rsync -avz --progress \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+            deploy-staging/app.jar \
+            ${{ secrets.PREPROD_EC2_USER }}@${{ secrets.PREPROD_EC2_HOST }}:~/deploy/app.jar
+          echo "✓ app.jar copied successfully"
+
+      - name: Copy deployment script to EC2
+        run: |
+          echo "Copying blue_green_deploy.sh..."
+          rsync -avz \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+            deploy-staging/blue_green_deploy.sh \
+            ${{ secrets.PREPROD_EC2_USER }}@${{ secrets.PREPROD_EC2_HOST }}:~/deploy/blue_green_deploy.sh
+          echo "✓ blue_green_deploy.sh copied successfully"
+
+      - name: Copy setup script to EC2
+        run: |
+          echo "Copying ec2_setup.sh..."
+          rsync -avz \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+            scripts/ec2_setup.sh \
+            ${{ secrets.PREPROD_EC2_USER }}@${{ secrets.PREPROD_EC2_HOST }}:~/deploy/ec2_setup.sh
+          echo "✓ ec2_setup.sh copied successfully"
+
+      - name: Set permissions on EC2
+        run: |
+          echo "Setting permissions..."
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            ${{ secrets.PREPROD_EC2_USER }}@${{ secrets.PREPROD_EC2_HOST }} \
+            "chmod +x ~/deploy/blue_green_deploy.sh ~/deploy/ec2_setup.sh && \
+             chmod 644 ~/deploy/app.jar && \
+             ls -lh ~/deploy/"
+
+      - name: Verify files on EC2
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            ${{ secrets.PREPROD_EC2_USER }}@${{ secrets.PREPROD_EC2_HOST }} \
+            "test -f ~/deploy/app.jar && echo '✓ app.jar exists' || (echo '✗ app.jar missing' && exit 1); \
+             test -f ~/deploy/blue_green_deploy.sh && echo '✓ blue_green_deploy.sh exists' || (echo '✗ blue_green_deploy.sh missing' && exit 1); \
+             test -f ~/deploy/ec2_setup.sh && echo '✓ ec2_setup.sh exists' || (echo '✗ ec2_setup.sh missing' && exit 1); \
+             echo 'All files verified on EC2 ✓'"
+
+      - name: Run EC2 setup (if needed) and Blue/Green deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PREPROD_EC2_HOST }}
+          username: ${{ secrets.PREPROD_EC2_USER }}
+          key: ${{ secrets.PREPROD_EC2_SSH_KEY }}
+          timeout: 120s
+          command_timeout: 20m
+          script: |
+            set -e
+            
+            echo "=== Pre-deployment JAR verification ==="
+            if [[ ! -f ~/deploy/app.jar ]]; then
+              echo "ERROR: app.jar not found at ~/deploy/app.jar" >&2
+              exit 1
+            fi
+            
+            # Check if blue/green unit files exist (file check avoids systemctl timeout)
+            if [[ ! -f /etc/systemd/system/gpsurvey-blue.service ]] && [[ ! -f /lib/systemd/system/gpsurvey-blue.service ]]; then
+              echo "Services not found. Running one-time EC2 setup..."
+              chmod +x ~/deploy/ec2_setup.sh
+              sudo bash ~/deploy/ec2_setup.sh --user "${{ secrets.PREPROD_EC2_USER }}"
+            else
+              echo "Services already exist. Skipping setup."
+            fi
+            
+            sudo mkdir -p /opt/gpsurvey/releases /var/log/gpsurvey
+            chmod +x ~/deploy/blue_green_deploy.sh
+            USE_BG="${{ github.event.inputs.use_blue_green }}"
+            if [[ "$USE_BG" == "true" ]]; then
+              echo "Deploying ~/deploy/app.jar to EC2 (blue/green)"
+              sudo bash ~/deploy/blue_green_deploy.sh --jar ~/deploy/app.jar --user "${{ secrets.PREPROD_EC2_USER }}" --blue-green
+            else
+              echo "Deploying ~/deploy/app.jar to EC2 (single instance)"
+              sudo bash ~/deploy/blue_green_deploy.sh --jar ~/deploy/app.jar --user "${{ secrets.PREPROD_EC2_USER }}"
+            fi
+
+      - name: Verify deployment - check which JAR is running
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PREPROD_EC2_HOST }}
+          username: ${{ secrets.PREPROD_EC2_USER }}
+          key: ${{ secrets.PREPROD_EC2_SSH_KEY }}
+          timeout: 120s
+          command_timeout: 5m
+          script: |
+            set -e
+            echo "=== Post-Deployment Verification ==="
+            
+            # Find which service is active
+            if [[ -L /etc/nginx/gpsurvey/app_backend.conf ]]; then
+              TARGET=$(readlink -f /etc/nginx/gpsurvey/app_backend.conf 2>/dev/null || echo "")
+              if [[ "$TARGET" == *"blue"* ]]; then
+                ACTIVE_SERVICE="gpsurvey-blue.service"
+                ACTIVE_PORT="8080"
+              elif [[ "$TARGET" == *"green"* ]]; then
+                ACTIVE_SERVICE="gpsurvey-green.service"
+                ACTIVE_PORT="8081"
+              else
+                ACTIVE_SERVICE="unknown"
+                ACTIVE_PORT="unknown"
+              fi
+              echo "Active service: $ACTIVE_SERVICE (port $ACTIVE_PORT)"
+            else
+              echo "⚠ WARNING: Cannot determine active service"
+              ACTIVE_SERVICE="gpsurvey-blue.service"
+              ACTIVE_PORT="8080"
+            fi
+            
+            # Check what JAR the service is using
+            if systemctl is-active --quiet "$ACTIVE_SERVICE" 2>/dev/null; then
+              PID=$(systemctl show "$ACTIVE_SERVICE" -p MainPID --value 2>/dev/null || echo "")
+              if [[ -n "$PID" ]] && [[ "$PID" != "0" ]]; then
+                JAR_IN_USE=$(sudo lsof -p "$PID" 2>/dev/null | grep "\.jar$" | awk '{print $9}' | head -1 || echo "")
+                if [[ -n "$JAR_IN_USE" ]]; then
+                  echo "JAR in use by service: $JAR_IN_USE"
+                  JAR_DATE=$(stat -f "%Sm" "$JAR_IN_USE" 2>/dev/null || stat -c "%y" "$JAR_IN_USE" 2>/dev/null || echo "unknown")
+                  echo "JAR modification date: $JAR_DATE"
+                else
+                  echo "⚠ Could not determine which JAR is in use"
+                fi
+              fi
+            else
+              echo "⚠ Service $ACTIVE_SERVICE is not running"
+            fi
+            
+            # Check the symlink
+            echo ""
+            echo "current.jar symlink:"
+            ls -lh /opt/gpsurvey/releases/current.jar || echo "  Symlink does not exist"
+            
+      - name: Cleanup old JAR files (keep last 3)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PREPROD_EC2_HOST }}
+          username: ${{ secrets.PREPROD_EC2_USER }}
+          key: ${{ secrets.PREPROD_EC2_SSH_KEY }}
+          timeout: 120s
+          command_timeout: 5m
+          script: |
+            set -e
+            echo "=== Cleaning up old JAR files ==="
+            cd /opt/gpsurvey/releases
+            JAR_COUNT=$(ls -1 app-*.jar 2>/dev/null | wc -l)
+            echo "Found ${JAR_COUNT} JAR files"
+            
+            if [ "${JAR_COUNT}" -gt 3 ]; then
+              echo "Keeping last 3 JAR files, deleting $(($JAR_COUNT - 3)) old files..."
+              ls -t app-*.jar | tail -n +4 | xargs -r rm -f
+              echo "✓ Cleanup complete!"
+            else
+              echo "Only ${JAR_COUNT} JAR files found. No cleanup needed."
+            fi
+            
+            echo ""
+            echo "=== Remaining JAR files ==="
+            ls -lth app-*.jar
