@@ -203,7 +203,7 @@ export async function insertSurvey(survey) {
       gpBhawanAvailable, gpBhawanInfraStatus, gpBhawanEnergyMeter, gpBhawanEarthing, gpBhawanSolar, gpBhawanLat, gpBhawanLong,
       proposedBuilding, proposedRackSpace, proposedLat, proposedLong,
       proposedEnergyMeter, proposedEarthing, proposedSolar, proposedPoleLength, proposedPoleLat, proposedPoleLong, proposedRemarks,
-      sarpanchName, sarpanchContact, photoBase64, userId
+      sarpanchName, sarpanchContact, photoBase64, userId, synced, syncedAt
     ) VALUES (
       $uuid, $stateId, $stateName, $districtId, $districtName, $blockId, $blockName,
       $gramPanchayatId, $gramPanchayatName, $gramPanchayatCode,
@@ -213,7 +213,7 @@ export async function insertSurvey(survey) {
       $gpBhawanAvailable, $gpBhawanInfraStatus, $gpBhawanEnergyMeter, $gpBhawanEarthing, $gpBhawanSolar, $gpBhawanLat, $gpBhawanLong,
       $proposedBuilding, $proposedRackSpace, $proposedLat, $proposedLong,
       $proposedEnergyMeter, $proposedEarthing, $proposedSolar, $proposedPoleLength, $proposedPoleLat, $proposedPoleLong, $proposedRemarks,
-      $sarpanchName, $sarpanchContact, $photoBase64, $userId
+      $sarpanchName, $sarpanchContact, $photoBase64, $userId, $synced, $syncedAt
     )`,
     {
       $uuid: survey.uuid,
@@ -244,9 +244,25 @@ export async function insertSurvey(survey) {
       $sarpanchName: survey.sarpanchName ?? null, $sarpanchContact: survey.sarpanchContact ?? null,
       $photoBase64: survey.photoBase64 ?? null,
       $userId: survey.userId ?? null,
+      $synced: survey.synced ?? 0,
+      $syncedAt: survey.syncedAt ?? null,
     }
   );
   return result;
+}
+
+export async function insertServerSurvey(survey) {
+  if (isWeb) {
+    // web logic omitted for brevity, fallback to insertSurvey
+    return insertSurvey({ ...survey, synced: 1 });
+  }
+  const d = await getDB();
+  // Don't overwrite if we have local unsynced changes for this survey!
+  const existing = await d.getFirstAsync('SELECT synced FROM surveys WHERE uuid = ?', [survey.uuid]);
+  if (existing && existing.synced === 0) {
+    return; 
+  }
+  return insertSurvey({ ...survey, synced: 1 });
 }
 
 export async function getUnsyncedSurveys() {

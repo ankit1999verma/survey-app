@@ -28,6 +28,7 @@ public class SurveyController {
                 java.util.Optional<Survey> existing = surveyRepo.findByUuid(s.getUuid());
                 if(existing.isPresent()) {
                     s.setId(existing.get().getId());
+                    s.setCreatedAt(existing.get().getCreatedAt());
                 } else {
                     s.setId(null); // Create new record
                 }

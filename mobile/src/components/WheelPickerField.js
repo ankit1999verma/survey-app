@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, Modal, StyleSheet, Platform,
-  SafeAreaView, ActivityIndicator, FlatList, TextInput, Keyboard
+  SafeAreaView, ActivityIndicator, FlatList, TextInput, Keyboard, KeyboardAvoidingView
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, radius, typography, shadows } from '../theme';
@@ -88,7 +88,10 @@ const WheelPickerField = React.forwardRef(({
         transparent={true}
         onRequestClose={handleClose}
       >
-        <View style={styles.modalWrapper}>
+        <KeyboardAvoidingView 
+          style={styles.modalWrapper}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={handleClose} />
 
           <SafeAreaView style={styles.sheet}>
@@ -133,7 +136,7 @@ const WheelPickerField = React.forwardRef(({
               }
             />
           </SafeAreaView>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
