@@ -26,36 +26,29 @@ const SurveyListScreen = ({ navigation }) => {
   const loadSurveys = async () => {
     try {
       setLoading(true);
-      const local = await getAllSurveys();
-      let server = [];
+      
+      // True Incremental Sync for Surveys
+      const { getLocalSurveyMaxDate, insertSurvey } = require('../utils/localDB');
+      const maxDate = await getLocalSurveyMaxDate();
+      
       try {
-        const res = await api.get('/survey/list');
-        if (res.data) server = res.data.map(s => ({ ...s, synced: 1 }));
+        const res = await api.get(`/survey/list?afterDate=${encodeURIComponent(maxDate)}&size=1000`);
+        if (res.data && res.data.content && res.data.content.length > 0) {
+          // Save new surveys locally
+          for (let s of res.data.content) {
+            await insertSurvey({ ...s, synced: 1 });
+          }
+        }
       } catch (err) {
         if (err.response?.status !== 404) {
           console.log('Failed to fetch server surveys', err);
         }
       }
       
-      const getTime = (dateStr) => {
-        if (!dateStr) return 0;
-        let s = typeof dateStr === 'string' ? dateStr.replace(' ', 'T') : dateStr;
-        if (typeof s === 'string' && s.length === 19 && !s.endsWith('Z')) s += 'Z';
-        const d = new Date(s);
-        return isNaN(d.getTime()) ? 0 : d.getTime();
-      };
+      // Load all surveys from SQLite (now includes freshly synced ones)
+      const local = await getAllSurveys();
+      setSurveys(local);
 
-      const localUuids = new Set(local.map(s => s.uuid));
-      const combined = [
-        ...local,
-        ...server.filter(s => !localUuids.has(s.uuid))
-      ].sort((a, b) => {
-        const timeA = Math.max(getTime(a.updatedAt), getTime(a.createdAt), Math.max(getTime(a.surveyDate), 0));
-        const timeB = Math.max(getTime(b.updatedAt), getTime(b.createdAt), Math.max(getTime(b.surveyDate), 0));
-        return timeB - timeA;
-      });
-
-      setSurveys(combined);
     } catch (e) {
       alert('Error', 'Error loading surveys: ' + e.message);
     } finally {

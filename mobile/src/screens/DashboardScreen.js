@@ -43,37 +43,19 @@ const DashboardScreen = ({ navigation }) => {
 
   const loadStats = async () => {
     try {
-      const pending = await getPendingSurveys();
-      setPendingCount(pending.length);
-      setIsSynced(pending.length === 0);
-
-      const cachedCount = await AsyncStorage.getItem('completedCount');
-      if (cachedCount) setCompletedCount(parseInt(cachedCount, 10));
+      const counts = await getSurveyCounts();
+      setPendingCount(counts.unsynced);
+      setIsSynced(counts.unsynced === 0);
+      setCompletedCount(counts.total);
       
-      const cachedToday = await AsyncStorage.getItem('todayCompletedCount');
-      if (cachedToday) setTodayCompletedCount(parseInt(cachedToday, 10));
-
       const cachedLastSync = await AsyncStorage.getItem('lastSyncTime');
       if (cachedLastSync) {
         setLastSync(new Date(cachedLastSync));
       } else {
         setTimeout(() => handleSyncData(true), 100);
       }
-
-      const res = await api.get('/survey/list');
-      if (res.data) {
-        const total = res.data.length;
-        const todayStr = new Date().toISOString().split('T')[0];
-        const todayCount = res.data.filter(s => s.createdAt && s.createdAt.startsWith(todayStr)).length;
-
-        setCompletedCount(total);
-        setTodayCompletedCount(todayCount);
-
-        await AsyncStorage.setItem('completedCount', String(total));
-        await AsyncStorage.setItem('todayCompletedCount', String(todayCount));
-      }
     } catch (error) {
-      console.log('Failed to fetch stats from API', error);
+      console.log('Failed to fetch stats from local DB', error);
     }
   };
 
@@ -291,7 +273,7 @@ const DashboardScreen = ({ navigation }) => {
             </View>
             <Text style={styles.statNumber}>{completedCount}</Text>
             <Text style={styles.statLabel}>COMPLETED</Text>
-            <Text style={styles.statSub}>+{todayCompletedCount} today</Text>
+            <Text style={styles.statSub}>Total saved on device</Text>
           </View>
           <View style={[styles.statCard, pendingCount > 0 && styles.statCardWarning]}>
             <View style={[styles.statIconBox, pendingCount > 0 && { backgroundColor: colors.pendingBorder }]}>

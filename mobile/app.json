@@ -21,6 +21,7 @@
       "bundleIdentifier": "com.ankitverma.gpsurveypro"
     },
     "android": {
+      "package": "com.ankitverma.gpsurveypro",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",

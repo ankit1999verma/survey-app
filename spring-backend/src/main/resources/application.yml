@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: gp-survey-backend
+  datasource:
+    url: jdbc:mysql://mydb-prepro.ch4ii2q46u6h.ap-south-1.rds.amazonaws.com/gpsurvey?createDatabaseIfNotExist=true&characterEncoding=latin1&useConfigs=maxPerformance&allowPublicKeyRetrieval=true&useSSL=false&sessionVariables=sql_mode=''&serverTimezone=Asia/Kolkata
+    username: admin
+    password: Mumbaidb123
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: tivarax@gmail.com
+    password: laiftsompdgjndwz
+    properties:
+      mail:
+        smtp:
+          starttls:
+            enable: true
+            required: true
+          auth: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+
+server:
+  port: 8082
+
+jwt:
+  secret: ${JWT_SECRET:your_super_secret_key_that_is_at_least_256_bits_long_for_security_reasons_12345}
+  expiration: 31536000000 # 365 days in ms for offline workers

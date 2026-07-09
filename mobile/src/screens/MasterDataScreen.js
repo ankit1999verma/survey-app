@@ -7,7 +7,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../utils/api';
 import { useAlert } from '../context/AlertContext';
-import { syncMasterData } from '../utils/syncManager';
+import { syncMasterData, getMasterData } from '../utils/syncManager';
+import { clearMasterData } from '../utils/localDB';
 
 const TABS = ['States', 'Districts', 'Blocks', 'GPs'];
 
@@ -67,6 +68,8 @@ export default function MasterDataScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading]     = useState(false);
   const [saving, setSaving]       = useState(false);
+  const [clearing, setClearing]   = useState(false);
+  const [syncProgress, setSyncProgress] = useState(null); // { step, done, total }
   const [states, setStates]       = useState([]);
   const [districts, setDistricts] = useState([]);
   const [blocks, setBlocks]       = useState([]);
@@ -82,25 +85,67 @@ export default function MasterDataScreen({ navigation }) {
   const [page, setPage] = useState(1);
   const ITEMS_PER_PAGE = 50;
 
-  const fetchAll = useCallback(async () => {
+  const fetchAll = useCallback(async (forceSync = false) => {
     setLoading(true);
+    setSyncProgress(null);
     try {
-      const [s, d, b, g] = await Promise.all([
-        api.get('/master/states'),
-        api.get('/master/districts'),
-        api.get('/master/blocks'),
-        api.get('/master/grampanchayats'),
-      ]);
-      setStates(s.data.data);
-      setDistricts(d.data.data);
-      setBlocks(b.data.data);
-      setGps(g.data.data);
+      let masterData = await getMasterData();
+
+      if (!masterData || forceSync) {
+        // Paginated sync with live progress
+        masterData = await syncMasterData((progress) => {
+          setSyncProgress(progress);
+          // Update UI as each chunk arrives
+          if (progress.step === 'gps' && progress.done > 0) {
+            getMasterData().then(d => {
+              if (d) {
+                setStates(d.states || []);
+                setDistricts(d.districts || []);
+                setBlocks(d.blocks || []);
+                setGps(d.gramPanchayats || []);
+              }
+            });
+          }
+        });
+      }
+
+      if (masterData) {
+        setStates(masterData.states || []);
+        setDistricts(masterData.districts || []);
+        setBlocks(masterData.blocks || []);
+        setGps(masterData.gramPanchayats || []);
+      }
     } catch (e) {
-      alert('Error', 'Could not load master data. Check your connection.');
+      alert('Error', 'Could not sync master data: ' + (e.message || 'Check your connection.'));
     } finally {
       setLoading(false);
+      setSyncProgress(null);
     }
   }, []);
+
+  const handleClear = async () => {
+    alert(
+      'Clear Master Data',
+      'This will delete all locally stored states, districts, blocks and GPs. You will need to re-sync. Are you sure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear All', style: 'destructive',
+          onPress: async () => {
+            setClearing(true);
+            try {
+              await clearMasterData();
+              setStates([]); setDistricts([]); setBlocks([]); setGps([]);
+            } catch (e) {
+              alert('Error', 'Could not clear master data.');
+            } finally {
+              setClearing(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -188,10 +233,21 @@ export default function MasterDataScreen({ navigation }) {
           <Text style={styles.backArrow}>‹</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Master Data</Text>
-        <TouchableOpacity onPress={fetchAll} style={styles.refreshBtn}>
+        <TouchableOpacity onPress={() => fetchAll(true)} style={styles.refreshBtn}>
           <Text style={styles.refreshText}>⟳</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Clear banner */}
+      <TouchableOpacity
+        style={[styles.clearBanner, clearing && styles.clearBannerDisabled]}
+        onPress={handleClear}
+        disabled={clearing || loading}
+      >
+        {clearing
+          ? <ActivityIndicator size="small" color="#fff" />
+          : <Text style={styles.clearBannerText}>🗑  Clear All Local Master Data</Text>}
+      </TouchableOpacity>
 
       <View style={styles.tabBar}>
         {TABS.map((t, i) => (
@@ -250,7 +306,16 @@ export default function MasterDataScreen({ navigation }) {
           <View style={styles.listCard}>
             <Text style={styles.listTitle}>{filterLabel()} ({currentList().length})</Text>
             {loading
-              ? <ActivityIndicator style={{ marginTop: 16 }} color="#1a3a8f" />
+              ? <>
+                  <ActivityIndicator style={{ marginTop: 16 }} color="#1a3a8f" />
+                  {syncProgress && (
+                    <Text style={styles.progressText}>
+                      {syncProgress.step === 'states' ? '📍 Syncing states & districts...' :
+                       syncProgress.step === 'blocks' ? `🏘 Blocks: ${syncProgress.done.toLocaleString()} / ${syncProgress.total?.toLocaleString() || '?'}` :
+                       `🏡 GPs: ${syncProgress.done.toLocaleString()} / ${syncProgress.total?.toLocaleString() || '?'}`}
+                    </Text>
+                  )}
+                </>
               : currentList().length === 0
                 ? <Text style={styles.emptyText}>No data found. Add one above.</Text>
                 : <>
@@ -319,6 +384,10 @@ const styles = StyleSheet.create({
   listItemSub:       { fontSize: 12, color: '#888', marginRight: 8 },
   listItemCode:      { fontSize: 11, color: '#aaa', backgroundColor: '#f0f4ff', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   emptyText:         { color: '#aaa', textAlign: 'center', marginTop: 20, fontSize: 14 },
+  progressText:      { color: '#1a3a8f', textAlign: 'center', marginTop: 8, fontSize: 13, fontWeight: '600' },
+  clearBanner:       { backgroundColor: '#c0392b', paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' },
+  clearBannerDisabled: { opacity: 0.6 },
+  clearBannerText:   { color: '#fff', fontWeight: '700', fontSize: 13 },
   loadMoreBtn:       { marginTop: 16, paddingVertical: 12, borderRadius: 8, backgroundColor: '#f0f4ff', alignItems: 'center' },
   loadMoreText:      { color: BLUE, fontWeight: '600', fontSize: 14 },
   modalSafe:         { flex: 1, backgroundColor: '#fff' },

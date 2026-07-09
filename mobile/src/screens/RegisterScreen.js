@@ -1,37 +1,51 @@
-import React, { useState, useContext } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ActivityIndicator, StatusBar, Platform, KeyboardAvoidingView, ScrollView
 } from 'react-native';
-import { AuthContext } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, radius, typography, shadows } from '../theme';
+import api from '../utils/api';
 import { useNavigation } from '@react-navigation/native';
 
-const LoginScreen = () => {
+const RegisterScreen = () => {
   const navigation = useNavigation();
-  const [username, setUsername] = useState(__DEV__ ? 'admin' : '');
-  const [password, setPassword] = useState(__DEV__ ? 'admin123' : '');
+  const { showAlert: alert } = useAlert();
+  
+  const [companyName, setCompanyName] = useState('');
+  const [adminName, setAdminName] = useState('');
+  const [contactNo, setContactNo] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [focusedField, setFocusedField] = useState(null);
-  const { login, isLoading } = useContext(AuthContext);
-  const { showAlert: alert } = useAlert();
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = async () => {
-    if (!username || !password) {
-      alert('Missing Fields', 'Please enter your username and password.');
+  const handleRegister = async () => {
+    if (!companyName || !adminName || !username || !password) {
+      alert('Missing Fields', 'Please fill in all the required fields to register.');
       return;
     }
+    
+    setIsLoading(true);
     try {
-      await login(username, password);
+      await api.post('/auth/register-company', {
+        companyName,
+        adminName,
+        adminContactNo: contactNo,
+        adminUsername: username,
+        adminPassword: password
+      });
+      
+      alert('Registration Successful', 'Your account has been created. An email with your credentials has been sent. Please contact our marketing team to activate your subscription.', [
+        { text: 'OK', onPress: () => navigation.goBack() }
+      ]);
     } catch (error) {
-      if (error.response && error.response.status === 403) {
-        alert('Subscription Inactive', error.response.data || 'Your subscription is inactive. Please contact marketing to activate.');
-      } else {
-        alert('Access Denied', 'Invalid credentials. Please try again.');
-      }
+      alert('Registration Failed', error.response?.data || 'An error occurred during registration. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -50,33 +64,79 @@ const LoginScreen = () => {
           bounces={false}
           showsVerticalScrollIndicator={false}
         >
-          
+          {/* Back Button */}
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+            <Feather name="arrow-left" size={24} color={colors.onSurface} />
+          </TouchableOpacity>
+
           {/* Logo / Title Area */}
           <View style={styles.brandContainer}>
             <View style={styles.logoBox}>
-              <Feather name="radio" size={36} color={colors.primary} />
+              <Feather name="briefcase" size={36} color={colors.primary} />
             </View>
-            <Text style={styles.appName}>BSNL GP Survey</Text>
-            <Text style={styles.appSubtitle}>Secure Field Portal</Text>
+            <Text style={styles.appName}>Register Company</Text>
+            <Text style={styles.appSubtitle}>Join our SaaS Platform</Text>
           </View>
 
-          {/* Login Card */}
+          {/* Registration Card */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Sign In</Text>
-            <Text style={styles.cardSubtitle}>
-              Authorized personnel login for survey data synchronization.
-            </Text>
-
-            {/* Username / Email / Phone */}
-            <Text style={styles.fieldLabel}>EMAIL OR PHONE NUMBER</Text>
-            <View style={[styles.inputWrapper, focusedField === 'username' && styles.inputFocused]}>
-              <Feather name="user" size={20} color={focusedField === 'username' ? colors.primary : colors.outline} style={styles.inputIcon} />
+            {/* Company Name */}
+            <Text style={styles.fieldLabel}>COMPANY NAME</Text>
+            <View style={[styles.inputWrapper, focusedField === 'company' && styles.inputFocused]}>
+              <Feather name="briefcase" size={20} color={focusedField === 'company' ? colors.primary : colors.outline} style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
-                placeholder="john@acme.com or +91..."
+                placeholder="Acme Corp"
+                value={companyName}
+                onChangeText={setCompanyName}
+                placeholderTextColor={colors.placeholder}
+                onFocus={() => setFocusedField('company')}
+                onBlur={() => setFocusedField(null)}
+              />
+            </View>
+            
+            {/* Admin Name */}
+            <Text style={styles.fieldLabel}>ADMIN NAME</Text>
+            <View style={[styles.inputWrapper, focusedField === 'admin' && styles.inputFocused]}>
+              <Feather name="user" size={20} color={focusedField === 'admin' ? colors.primary : colors.outline} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="John Doe"
+                value={adminName}
+                onChangeText={setAdminName}
+                placeholderTextColor={colors.placeholder}
+                onFocus={() => setFocusedField('admin')}
+                onBlur={() => setFocusedField(null)}
+              />
+            </View>
+
+            {/* Contact Number */}
+            <Text style={styles.fieldLabel}>CONTACT NUMBER</Text>
+            <View style={[styles.inputWrapper, focusedField === 'contact' && styles.inputFocused]}>
+              <Feather name="phone" size={20} color={focusedField === 'contact' ? colors.primary : colors.outline} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="+91 9876543210"
+                value={contactNo}
+                onChangeText={setContactNo}
+                keyboardType="phone-pad"
+                placeholderTextColor={colors.placeholder}
+                onFocus={() => setFocusedField('contact')}
+                onBlur={() => setFocusedField(null)}
+              />
+            </View>
+
+            {/* Email/Username */}
+            <Text style={styles.fieldLabel}>EMAIL (USERNAME)</Text>
+            <View style={[styles.inputWrapper, focusedField === 'username' && styles.inputFocused]}>
+              <Feather name="mail" size={20} color={focusedField === 'username' ? colors.primary : colors.outline} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="john@acme.com"
                 value={username}
                 onChangeText={setUsername}
                 autoCapitalize="none"
+                keyboardType="email-address"
                 placeholderTextColor={colors.placeholder}
                 onFocus={() => setFocusedField('username')}
                 onBlur={() => setFocusedField(null)}
@@ -102,40 +162,20 @@ const LoginScreen = () => {
               </TouchableOpacity>
             </View>
 
-            {/* Login Button */}
+            {/* Register Button */}
             <TouchableOpacity
               style={[styles.loginBtn, isLoading && styles.loginBtnDisabled]}
-              onPress={handleLogin}
+              onPress={handleRegister}
               disabled={isLoading}
               activeOpacity={0.85}
             >
               {isLoading ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Text style={styles.loginBtnText}>Login</Text>
+                <Text style={styles.loginBtnText}>Register Account</Text>
               )}
             </TouchableOpacity>
-
-            <TouchableOpacity style={styles.forgotBtn}>
-              <Text style={styles.forgotText}>Forgot credentials?</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.registerBtn}
-              onPress={() => navigation.navigate('Register')}
-            >
-              <Text style={styles.registerText}>Register Your Company</Text>
-            </TouchableOpacity>
           </View>
-
-          {/* Session Info */}
-          <View style={styles.sessionBanner}>
-            <Feather name="info" size={16} color={colors.onSurfaceVariant} style={styles.sessionIcon} />
-            <Text style={styles.sessionText}>Your session will persist until manual logout.</Text>
-          </View>
-
-          {/* Version footer */}
-          <Text style={styles.versionText}>V1.0.0-STABLE  •  SECURE MODE</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -145,7 +185,15 @@ const LoginScreen = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surfaceContainerLow },
   keyboardView: { flex: 1 },
-  scrollContent: { flexGrow: 1, paddingHorizontal: spacing.lg, justifyContent: 'center' },
+  scrollContent: { flexGrow: 1, paddingHorizontal: spacing.lg, justifyContent: 'center', paddingTop: spacing.xxl },
+
+  backBtn: {
+    position: 'absolute',
+    top: spacing.lg,
+    left: spacing.sm,
+    padding: spacing.sm,
+    zIndex: 10,
+  },
 
   // Brand
   brandContainer: {
@@ -181,15 +229,6 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     marginBottom: spacing.xl,
     ...shadows.lg,
-  },
-  cardTitle: {
-    ...typography.headlineSm, color: colors.onSurface,
-    fontWeight: '700', marginBottom: 8,
-  },
-  cardSubtitle: {
-    ...typography.bodyMd, color: colors.onSurfaceVariant,
-    marginBottom: spacing.xl,
-    lineHeight: 22,
   },
 
   // Fields
@@ -228,34 +267,6 @@ const styles = StyleSheet.create({
   },
   loginBtnDisabled: { opacity: 0.7 },
   loginBtnText: { color: colors.white, ...typography.titleMd, fontWeight: '700' },
-  forgotBtn: { alignSelf: 'center', paddingVertical: 8 },
-  forgotText: {
-    ...typography.labelLg, color: colors.primary,
-    fontWeight: '600',
-  },
-  registerBtn: { alignSelf: 'center', paddingVertical: 8, marginTop: spacing.sm },
-  registerText: {
-    ...typography.labelLg, color: colors.onSurfaceVariant,
-    fontWeight: '600', textDecorationLine: 'underline'
-  },
-
-  // Session banner
-  sessionBanner: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(37, 99, 235, 0.08)',
-    borderRadius: radius.lg, padding: spacing.md, gap: 12,
-    marginBottom: spacing.xl,
-  },
-  sessionText: {
-    ...typography.labelMd, color: colors.primary,
-    flex: 1, lineHeight: 20,
-  },
-
-  // Version
-  versionText: {
-    textAlign: 'center', 
-    ...typography.labelSm, color: colors.outline, letterSpacing: 1.5,
-  },
 });
 
-export default LoginScreen;
+export default RegisterScreen;
