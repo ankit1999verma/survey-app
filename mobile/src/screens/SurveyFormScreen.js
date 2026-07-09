@@ -485,13 +485,15 @@ export default function SurveyFormScreen({ route, navigation }) {
       <KeyboardAvoidingView 
         style={{ flex: 1 }} 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         <ScrollView 
           style={styles.scroll} 
           contentContainerStyle={{ paddingBottom: 100 }}
-        keyboardShouldPersistTaps="handled" 
-        showsVerticalScrollIndicator={false}
-      >
+          keyboardShouldPersistTaps="handled" 
+          keyboardDismissMode="interactive"
+          showsVerticalScrollIndicator={false}
+        >
         <View style={styles.body}>
 
           {/* ── 0: GP IDENTIFICATION ── */}
@@ -563,10 +565,6 @@ export default function SurveyFormScreen({ route, navigation }) {
                   ...f, gramPanchayatName: g?.name ?? '',
                   gramPanchayatId: g?.id ?? null, gramPanchayatCode: g?.code ?? '',
                 }));
-                if (id) {
-                  // Small tick to ensure React state batches before focus
-                  setTimeout(() => vendorRef.current?.focus(), 50);
-                }
               }}
             />
             {!!form.gramPanchayatCode && (
@@ -812,11 +810,11 @@ const styles = StyleSheet.create({
   // Section card
   sectionCard: {
     backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    borderLeftWidth: 4,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-    ...shadows.sm,
+    borderRadius: 16,
+    borderLeftWidth: 5,
+    padding: spacing.lg,
+    marginBottom: spacing.xl,
+    ...shadows.md,
   },
   sectionTag: {
     ...typography.labelSm, letterSpacing: 1.4,
@@ -834,20 +832,27 @@ const styles = StyleSheet.create({
   },
 
   input: {
-    borderWidth: 1.5, borderColor: colors.outlineVariant,
-    borderRadius: radius.md, paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 14 : 12,
+    borderWidth: 1, borderColor: colors.outlineVariant,
+    borderRadius: radius.lg, paddingHorizontal: 16,
+    paddingVertical: Platform.OS === 'ios' ? 16 : 14,
     ...typography.bodyMd, color: colors.onSurface,
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: colors.white,
   },
-  inputFocused: { borderColor: colors.primary, backgroundColor: colors.white, ...shadows.sm },
+  inputFocused: { 
+    borderColor: colors.primary, 
+    borderWidth: 2,
+    paddingHorizontal: 15, // compensate for thicker border
+    backgroundColor: '#f8fafc', 
+    ...shadows.sm 
+  },
 
   // GPS
   gpsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   gpsBtn: {
-    width: 52, height: 52, borderRadius: radius.md,
-    borderWidth: 1.5, borderColor: colors.outlineVariant,
-    backgroundColor: colors.surfaceContainerLow, justifyContent: 'center', alignItems: 'center',
+    width: 56, height: 56, borderRadius: radius.lg,
+    borderWidth: 1, borderColor: colors.outlineVariant,
+    backgroundColor: colors.white, justifyContent: 'center', alignItems: 'center',
+    ...shadows.sm
   },
 
   // GP code badge
@@ -861,18 +866,18 @@ const styles = StyleSheet.create({
 
   // Phone
   phoneWrapper: {
-    flexDirection: 'row', borderWidth: 1.5, borderColor: colors.outlineVariant,
-    borderRadius: radius.md, overflow: 'hidden', backgroundColor: colors.surfaceContainerLow,
+    flexDirection: 'row', borderWidth: 1, borderColor: colors.outlineVariant,
+    borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.white,
   },
   phonePrefix: {
-    paddingHorizontal: 14, justifyContent: 'center',
-    backgroundColor: colors.outlineVariant,
+    paddingHorizontal: 16, justifyContent: 'center',
+    backgroundColor: '#f1f5f9',
   },
-  phonePrefixText: { ...typography.bodyMd, fontWeight: '600', color: colors.onSurfaceVariant },
-  phoneDivider: { width: 0 },
+  phonePrefixText: { ...typography.bodyMd, fontWeight: '700', color: colors.onSurfaceVariant },
+  phoneDivider: { width: 1, backgroundColor: colors.outlineVariant },
   phoneInput: {
-    flex: 1, paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 14 : 12,
+    flex: 1, paddingHorizontal: 16,
+    paddingVertical: Platform.OS === 'ios' ? 16 : 14,
     ...typography.bodyMd, color: colors.onSurface,
   },
 
