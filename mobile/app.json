@@ -14,9 +14,13 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        },
         "NSCameraUsageDescription": "Camera is used to capture survey site photographs.",
         "NSPhotoLibraryUsageDescription": "Photo library access is used to upload site images for surveys.",
-        "NSLocationWhenInUseUsageDescription": "Location is used to record GPS coordinates of the survey site."
+        "NSLocationWhenInUseUsageDescription": "Location is used to record GPS coordinates of the survey site.",
+        "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "com.ankitverma.gpsurveypro"
     },
@@ -55,6 +59,11 @@
       ],
       "expo-sqlite",
       "expo-sharing"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "9ab4fa85-5c37-4379-b439-4faa79839b47"
+      }
+    }
   }
 }
