@@ -17,16 +17,47 @@ export const saveSurveyOffline = async (surveyData, userId) => {
 
 export const getPendingSurveys = async () => getUnsyncedSurveys();
 
+import axios from 'axios';
+
 export const syncSurveys = async () => {
   const pending = await getUnsyncedSurveys();
   if (pending.length === 0) return { count: 0, status: 'Nothing to sync' };
 
-  // Fix date strings for Jackson LocalDateTime parsing (replace space with T)
-  const formattedPending = pending.map(s => ({
-    ...s,
-    createdAt: s.createdAt ? s.createdAt.replace(' ', 'T') : undefined,
-    syncedAt: s.syncedAt ? s.syncedAt.replace(' ', 'T') : undefined,
-  }));
+  const formattedPending = [];
+  for (const s of pending) {
+    let finalPhotoData = s.photoBase64;
+    if (s.photoBase64) {
+      try {
+        const photos = JSON.parse(s.photoBase64);
+        if (Array.isArray(photos)) {
+          const uploadedUrls = [];
+          for (const b64 of photos) {
+            if (b64.startsWith('http')) {
+              uploadedUrls.push(b64);
+            } else {
+              const formData = new FormData();
+              formData.append("base64File", b64);
+              const upRes = await axios.post('https://upm.tivarax.in/api/upm/file/upload/base64', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+              });
+              // The API returns the URL as plain string
+              uploadedUrls.push(upRes.data);
+            }
+          }
+          finalPhotoData = JSON.stringify(uploadedUrls);
+        }
+      } catch (e) {
+        console.warn('Failed to upload photos to external bucket', e);
+      }
+    }
+
+    formattedPending.push({
+      ...s,
+      photoBase64: finalPhotoData,
+      createdAt: s.createdAt ? s.createdAt.replace(' ', 'T') : undefined,
+      syncedAt: s.syncedAt ? s.syncedAt.replace(' ', 'T') : undefined,
+    });
+  }
 
   const res = await api.post('/survey/sync', { surveys: formattedPending });
   if (res.status === 200 || res.status === 201) {

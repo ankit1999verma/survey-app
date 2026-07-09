@@ -95,6 +95,7 @@ EOF
 server {
     listen 80;
     server_name 13.204.243.30;
+    client_max_body_size 50M;
     
     # Include the active upstream
     include /etc/nginx/gpsurvey/app_backend.conf;

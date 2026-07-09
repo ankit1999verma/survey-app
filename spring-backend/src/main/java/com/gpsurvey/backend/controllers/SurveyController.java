@@ -18,19 +18,62 @@ public class SurveyController {
 
     @PostMapping("/sync")
     public ResponseEntity<?> syncSurveys(@RequestBody SyncRequest request, @RequestHeader("Authorization") String authHeader) {
-        // In a real app, extract user from JWT. 
-        // For scaffolding, we assume token has user ID: "dummy-jwt-token-1"
         try {
             Long userId = Long.parseLong(authHeader.replace("Bearer dummy-jwt-token-", ""));
             User user = userRepo.findById(userId).orElseThrow();
             
+            org.springframework.web.client.RestTemplate restTemplate = new org.springframework.web.client.RestTemplate();
+            
             for(Survey s : request.getSurveys()) {
+                java.util.Optional<Survey> existing = surveyRepo.findByUuid(s.getUuid());
+                if(existing.isPresent()) {
+                    s.setId(existing.get().getId());
+                } else {
+                    s.setId(null); // Create new record
+                }
                 s.setUser(user);
                 s.setCompany(user.getCompany());
+                
+                // If it contains photos, upload them to UPM API
+                if (s.getPhotoBase64() != null && !s.getPhotoBase64().isEmpty()) {
+                    try {
+                        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                        com.fasterxml.jackson.databind.JsonNode photosNode = mapper.readTree(s.getPhotoBase64());
+                        if (photosNode.isArray()) {
+                            java.util.List<String> uploadedUrls = new java.util.ArrayList<>();
+                            for (com.fasterxml.jackson.databind.JsonNode node : photosNode) {
+                                String b64 = node.asText();
+                                if (b64.startsWith("http")) {
+                                    uploadedUrls.add(b64);
+                                } else {
+                                    org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+                                    headers.setContentType(org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED);
+                                    
+                                    org.springframework.util.MultiValueMap<String, String> map= new org.springframework.util.LinkedMultiValueMap<>();
+                                    map.add("base64File", b64);
+                                    
+                                    org.springframework.http.HttpEntity<org.springframework.util.MultiValueMap<String, String>> req = new org.springframework.http.HttpEntity<>(map, headers);
+                                    
+                                    ResponseEntity<String> res = restTemplate.postForEntity("https://upm.tivarax.in/api/upm/file/upload/base64", req, String.class);
+                                    if(res.getStatusCode().is2xxSuccessful()) {
+                                        uploadedUrls.add(res.getBody());
+                                    } else {
+                                        uploadedUrls.add(b64); // Fallback
+                                    }
+                                }
+                            }
+                            s.setPhotoBase64(mapper.writeValueAsString(uploadedUrls));
+                        }
+                    } catch (Exception e) {
+                        System.err.println("Error uploading photo: " + e.getMessage());
+                    }
+                }
+                
                 surveyRepo.save(s);
             }
             return ResponseEntity.ok("Synced successfully");
         } catch(Exception e) {
+            e.printStackTrace();
             return ResponseEntity.badRequest().body("Sync failed: " + e.getMessage());
         }
     }
