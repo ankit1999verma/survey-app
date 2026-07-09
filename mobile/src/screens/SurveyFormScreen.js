@@ -716,7 +716,7 @@ export default function SurveyFormScreen({ route, navigation }) {
                   {form.photos.map((p, idx) => (
                     <View key={idx} style={styles.photoWrapper}>
                       <Image 
-                        source={{ uri: `data:image/jpeg;base64,${p}` }} 
+                        source={{ uri: p.startsWith('http') ? p : `data:image/jpeg;base64,${p}` }} 
                         style={styles.capturedPhotoThumb} 
                         resizeMode="cover" 
                       />
