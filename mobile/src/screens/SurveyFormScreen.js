@@ -874,7 +874,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     paddingHorizontal: 15, // compensate for thicker border
     backgroundColor: '#f8fafc', 
-    ...shadows.sm 
   },
 
   // GPS

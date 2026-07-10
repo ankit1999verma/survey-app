@@ -255,7 +255,6 @@ const styles = StyleSheet.create({
   inputFocused: { 
     borderColor: colors.primary, 
     backgroundColor: colors.white,
-    ...shadows.sm
   },
   inputIcon: { marginRight: 12 },
   input: { 

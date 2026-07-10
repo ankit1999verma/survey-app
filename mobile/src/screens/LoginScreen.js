@@ -181,7 +181,6 @@ const styles = StyleSheet.create({
   // Card
   card: {
     backgroundColor: colors.surface,
-    marginHorizontal: spacing.lg,
     borderRadius: radius.xxl,
     padding: spacing.xl,
     ...shadows.lg,
@@ -197,7 +196,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
     lineHeight: 22,
   },
-
+ 
   // Fields
   fieldLabel: {
     ...typography.labelSm, color: colors.onSurfaceVariant,
@@ -213,7 +212,6 @@ const styles = StyleSheet.create({
   inputFocused: { 
     borderColor: colors.primary, 
     backgroundColor: colors.white,
-    ...shadows.sm
   },
   inputIcon: { marginRight: 12 },
   input: { 
