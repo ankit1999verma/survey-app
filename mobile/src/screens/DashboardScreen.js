@@ -177,6 +177,10 @@ const DashboardScreen = ({ navigation }) => {
   };
 
   const handleExportExcel = async () => {
+    if (pendingCount > 0) {
+      alert('Action Required', `Please sync ${pendingCount} pending surveys to the server before exporting data.`);
+      return;
+    }
     try {
       setExportModalVisible(false);
       setIsSyncing(true);
@@ -186,15 +190,21 @@ const DashboardScreen = ({ navigation }) => {
       if (expDistrictId) queryParams.push(`districtId=${expDistrictId}`);
       if (expBlockId) queryParams.push(`blockId=${expBlockId}`);
       const queryStr = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
-      const exportUrl = api.defaults.baseURL + '/survey/export' + queryStr;
+      const exportUrl = api.defaults.baseURL + '/export/excel' + queryStr;
+      
+      const token = await AsyncStorage.getItem('userToken');
 
       if (Platform.OS === 'web') {
         window.open(exportUrl, '_blank');
       } else {
         const fileUri = FileSystem.documentDirectory + `GP_Survey_Export_${Date.now()}.xlsx`;
-        const downloadRes = await FileSystem.downloadAsync(exportUrl, fileUri);
+        const downloadRes = await FileSystem.downloadAsync(exportUrl, fileUri, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
         if (downloadRes.status !== 200) {
-          throw new Error('Server returned ' + downloadRes.status);
+          throw new Error('Server returned ' + downloadRes.status + '. Your subscription might be expired.');
         }
         if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(downloadRes.uri, {

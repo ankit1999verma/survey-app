@@ -25,4 +25,6 @@ public class User {
     @ManyToOne
     @JoinColumn(name="company_id")
     private Company company; // Nullable for SUPER_ADMIN, required for others
+    
+    private LocalDateTime subscriptionExpiryDate;
 }

@@ -1,11 +1,78 @@
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
+import CryptoJS from 'crypto-js';
 
 let db = null;
+let encryptionKey = null;
+
+async function initEncryptionKey() {
+  if (Platform.OS === 'web') return;
+  let key = await SecureStore.getItemAsync('db_encryption_key');
+  if (!key) {
+    key = CryptoJS.lib.WordArray.random(32).toString();
+    await SecureStore.setItemAsync('db_encryption_key', key);
+  }
+  encryptionKey = key;
+}
+
+const ENCRYPTED_FIELDS = [
+  'stateName', 'districtName', 'blockName', 'gramPanchayatName', 'gramPanchayatCode',
+  'phase', 'surveyVendor', 'surveyDate', 'surveyDone', 'remarks',
+  'origLocationType', 'origInfraStatus', 'origElectricity', 'origPowerHours', 'origSolar', 'origEarthing', 'origLat', 'origLong',
+  'currentLocation', 'currentPermTemp', 'currentLat', 'currentLong',
+  'gpBhawanAvailable', 'gpBhawanInfraStatus', 'gpBhawanEnergyMeter', 'gpBhawanEarthing', 'gpBhawanSolar', 'gpBhawanLat', 'gpBhawanLong',
+  'proposedBuilding', 'proposedRackSpace', 'proposedLat', 'proposedLong',
+  'proposedEnergyMeter', 'proposedEarthing', 'proposedSolar', 'proposedPoleLength', 'proposedPoleLat', 'proposedPoleLong', 'proposedRemarks',
+  'sarpanchName', 'sarpanchContact', 'photoBase64'
+];
+
+function safeEncrypt(val) {
+  if (val == null) return null;
+  const strVal = String(val);
+  return 'ENC:' + CryptoJS.AES.encrypt(strVal, encryptionKey).toString();
+}
+
+function safeDecrypt(val) {
+  if (!val || typeof val !== 'string') return val;
+  if (val.startsWith('ENC:')) {
+    try {
+      const bytes = CryptoJS.AES.decrypt(val.substring(4), encryptionKey);
+      return bytes.toString(CryptoJS.enc.Utf8);
+    } catch (e) {
+      return val; // fallback if decryption fails
+    }
+  }
+  return val;
+}
+
+function encryptSurvey(survey) {
+  if (!encryptionKey) return survey;
+  const s = { ...survey };
+  for (const field of ENCRYPTED_FIELDS) {
+    if (s[field] != null) s[field] = safeEncrypt(s[field]);
+  }
+  return s;
+}
+
+function decryptSurvey(survey) {
+  if (!encryptionKey) return survey;
+  const s = { ...survey };
+  for (const field of ENCRYPTED_FIELDS) {
+    if (s[field] != null) {
+      s[field] = safeDecrypt(s[field]);
+      if ((field.endsWith('Lat') || field.endsWith('Long')) && s[field] !== '') {
+        s[field] = parseFloat(s[field]);
+      }
+    }
+  }
+  return s;
+}
 
 export async function getDB() {
   if (Platform.OS === 'web') throw new Error('SQLite not supported on Web');
   if (!db) {
+    await initEncryptionKey();
     db = await SQLite.openDatabaseAsync('gp_survey.db');
     await initSchema();
   }
@@ -199,6 +266,7 @@ export async function insertSurvey(survey) {
     return;
   }
   const d = await getDB();
+  const encSurvey = encryptSurvey(survey);
   const result = await d.runAsync(
     `INSERT OR REPLACE INTO surveys (
       uuid, stateId, stateName, districtId, districtName, blockId, blockName,
@@ -222,38 +290,38 @@ export async function insertSurvey(survey) {
       $sarpanchName, $sarpanchContact, $photoBase64, $userId, $synced, $syncedAt, $createdAt, $serverId
     )`,
     {
-      $uuid: survey.uuid,
-      $stateId: survey.stateId ?? null, $stateName: survey.stateName ?? null,
-      $districtId: survey.districtId ?? null, $districtName: survey.districtName ?? null,
-      $blockId: survey.blockId ?? null, $blockName: survey.blockName ?? null,
-      $gramPanchayatId: survey.gramPanchayatId ?? null, $gramPanchayatName: survey.gramPanchayatName ?? null,
-      $gramPanchayatCode: survey.gramPanchayatCode ?? null,
-      $phase: survey.phase ?? null, $surveyVendor: survey.surveyVendor ?? null,
-      $surveyDate: survey.surveyDate ?? null, $surveyDone: survey.surveyDone ?? 'YES',
-      $remarks: survey.remarks ?? null,
-      $origLocationType: survey.origLocationType ?? null, $origInfraStatus: survey.origInfraStatus ?? null,
-      $origElectricity: survey.origElectricity ?? null, $origPowerHours: survey.origPowerHours ?? null,
-      $origSolar: survey.origSolar ?? null, $origEarthing: survey.origEarthing ?? null,
-      $origLat: survey.origLat ?? null, $origLong: survey.origLong ?? null,
-      $currentLocation: survey.currentLocation ?? null, $currentPermTemp: survey.currentPermTemp ?? null,
-      $currentLat: survey.currentLat ?? null, $currentLong: survey.currentLong ?? null,
-      $gpBhawanAvailable: survey.gpBhawanAvailable ?? null, $gpBhawanInfraStatus: survey.gpBhawanInfraStatus ?? null,
-      $gpBhawanEnergyMeter: survey.gpBhawanEnergyMeter ?? null, $gpBhawanEarthing: survey.gpBhawanEarthing ?? null,
-      $gpBhawanSolar: survey.gpBhawanSolar ?? null, $gpBhawanLat: survey.gpBhawanLat ?? null,
-      $gpBhawanLong: survey.gpBhawanLong ?? null,
-      $proposedBuilding: survey.proposedBuilding ?? null, $proposedRackSpace: survey.proposedRackSpace ?? null,
-      $proposedLat: survey.proposedLat ?? null, $proposedLong: survey.proposedLong ?? null,
-      $proposedEnergyMeter: survey.proposedEnergyMeter ?? null, $proposedEarthing: survey.proposedEarthing ?? null,
-      $proposedSolar: survey.proposedSolar ?? null, $proposedPoleLength: survey.proposedPoleLength ?? null,
-      $proposedPoleLat: survey.proposedPoleLat ?? null, $proposedPoleLong: survey.proposedPoleLong ?? null,
-      $proposedRemarks: survey.proposedRemarks ?? null,
-      $sarpanchName: survey.sarpanchName ?? null, $sarpanchContact: survey.sarpanchContact ?? null,
-      $photoBase64: survey.photoBase64 ?? null,
-      $userId: survey.userId ?? null,
-      $synced: survey.synced ?? 0,
-      $syncedAt: survey.syncedAt ?? null,
-      $createdAt: survey.createdAt ?? new Date().toISOString(),
-      $serverId: survey.id ?? null,
+      $uuid: encSurvey.uuid,
+      $stateId: encSurvey.stateId ?? null, $stateName: encSurvey.stateName ?? null,
+      $districtId: encSurvey.districtId ?? null, $districtName: encSurvey.districtName ?? null,
+      $blockId: encSurvey.blockId ?? null, $blockName: encSurvey.blockName ?? null,
+      $gramPanchayatId: encSurvey.gramPanchayatId ?? null, $gramPanchayatName: encSurvey.gramPanchayatName ?? null,
+      $gramPanchayatCode: encSurvey.gramPanchayatCode ?? null,
+      $phase: encSurvey.phase ?? null, $surveyVendor: encSurvey.surveyVendor ?? null,
+      $surveyDate: encSurvey.surveyDate ?? null, $surveyDone: encSurvey.surveyDone ?? 'YES',
+      $remarks: encSurvey.remarks ?? null,
+      $origLocationType: encSurvey.origLocationType ?? null, $origInfraStatus: encSurvey.origInfraStatus ?? null,
+      $origElectricity: encSurvey.origElectricity ?? null, $origPowerHours: encSurvey.origPowerHours ?? null,
+      $origSolar: encSurvey.origSolar ?? null, $origEarthing: encSurvey.origEarthing ?? null,
+      $origLat: encSurvey.origLat ?? null, $origLong: encSurvey.origLong ?? null,
+      $currentLocation: encSurvey.currentLocation ?? null, $currentPermTemp: encSurvey.currentPermTemp ?? null,
+      $currentLat: encSurvey.currentLat ?? null, $currentLong: encSurvey.currentLong ?? null,
+      $gpBhawanAvailable: encSurvey.gpBhawanAvailable ?? null, $gpBhawanInfraStatus: encSurvey.gpBhawanInfraStatus ?? null,
+      $gpBhawanEnergyMeter: encSurvey.gpBhawanEnergyMeter ?? null, $gpBhawanEarthing: encSurvey.gpBhawanEarthing ?? null,
+      $gpBhawanSolar: encSurvey.gpBhawanSolar ?? null, $gpBhawanLat: encSurvey.gpBhawanLat ?? null,
+      $gpBhawanLong: encSurvey.gpBhawanLong ?? null,
+      $proposedBuilding: encSurvey.proposedBuilding ?? null, $proposedRackSpace: encSurvey.proposedRackSpace ?? null,
+      $proposedLat: encSurvey.proposedLat ?? null, $proposedLong: encSurvey.proposedLong ?? null,
+      $proposedEnergyMeter: encSurvey.proposedEnergyMeter ?? null, $proposedEarthing: encSurvey.proposedEarthing ?? null,
+      $proposedSolar: encSurvey.proposedSolar ?? null, $proposedPoleLength: encSurvey.proposedPoleLength ?? null,
+      $proposedPoleLat: encSurvey.proposedPoleLat ?? null, $proposedPoleLong: encSurvey.proposedPoleLong ?? null,
+      $proposedRemarks: encSurvey.proposedRemarks ?? null,
+      $sarpanchName: encSurvey.sarpanchName ?? null, $sarpanchContact: encSurvey.sarpanchContact ?? null,
+      $photoBase64: encSurvey.photoBase64 ?? null,
+      $userId: encSurvey.userId ?? null,
+      $synced: encSurvey.synced ?? 0,
+      $syncedAt: encSurvey.syncedAt ?? null,
+      $createdAt: encSurvey.createdAt ?? new Date().toISOString(),
+      $serverId: encSurvey.id ?? null,
     }
   );
   return result;
@@ -280,7 +348,8 @@ export async function getUnsyncedSurveys() {
     return data.filter(s => s.synced === 0).sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
   }
   const d = await getDB();
-  return d.getAllAsync('SELECT * FROM surveys WHERE synced = 0 ORDER BY createdAt ASC');
+  const rows = await d.getAllAsync('SELECT * FROM surveys WHERE synced = 0 ORDER BY createdAt ASC');
+  return rows.map(decryptSurvey);
 }
 
 export async function getAllSurveys() {
@@ -290,7 +359,8 @@ export async function getAllSurveys() {
     return data.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
   }
   const d = await getDB();
-  return d.getAllAsync('SELECT * FROM surveys ORDER BY COALESCE(serverId, 999999999) DESC, createdAt DESC, id DESC');
+  const rows = await d.getAllAsync('SELECT * FROM surveys ORDER BY COALESCE(serverId, 999999999) DESC, createdAt DESC, id DESC');
+  return rows.map(decryptSurvey);
 }
 
 export async function markSynced(uuids) {
