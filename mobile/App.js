@@ -12,6 +12,7 @@ import DashboardScreen from './src/screens/DashboardScreen';
 import SurveyFormScreen from './src/screens/SurveyFormScreen';
 import MasterDataScreen from './src/screens/MasterDataScreen';
 import SurveyListScreen from './src/screens/SurveyListScreen';
+import InviteWorkerScreen from './src/screens/InviteWorkerScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -40,6 +41,7 @@ const AppNav = () => {
             <Stack.Screen name="SurveyForm" component={SurveyFormScreen} />
             <Stack.Screen name="MasterData" component={MasterDataScreen} />
             <Stack.Screen name="SurveyList" component={SurveyListScreen} />
+            <Stack.Screen name="InviteWorker" component={InviteWorkerScreen} />
           </>
         )}
       </Stack.Navigator>

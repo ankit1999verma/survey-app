@@ -33,4 +33,26 @@ public class EmailService {
             System.err.println("Failed to send email: " + e.getMessage());
         }
     }
+
+    public void sendWorkerInviteEmail(String toEmail, String name, String username, String password, String companyName) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(toEmail);
+        message.setSubject("Invitation to join " + companyName + " on GP Survey");
+        
+        String body = "Hello " + name + ",\n\n" +
+                "You have been invited to join " + companyName + " on the GP Survey platform.\n\n" +
+                "Here are your login credentials:\n" +
+                "Username (Email): " + username + "\n" +
+                "Password: " + password + "\n\n" +
+                "You can now log in to the GP Survey mobile app to start conducting surveys.\n\n" +
+                "Thank you,\nGP Survey Team";
+                
+        message.setText(body);
+        
+        try {
+            mailSender.send(message);
+        } catch (Exception e) {
+            System.err.println("Failed to send invite email: " + e.getMessage());
+        }
+    }
 }

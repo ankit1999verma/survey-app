@@ -37,13 +37,24 @@ public class ExportController {
             Long userId = Long.parseLong(authHeader.replace("Bearer dummy-jwt-token-", ""));
             User user = userRepo.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
 
-            // Check subscription
-            if (user.getSubscriptionExpiryDate() == null || user.getSubscriptionExpiryDate().isBefore(LocalDateTime.now())) {
-                return ResponseEntity.status(403).body("Subscription expired. Please renew your subscription to export data.");
+            // Check subscription (skip for SUPER_ADMIN, otherwise check company or user)
+            if (!"SUPER_ADMIN".equals(user.getRole())) {
+                boolean isCompanyInactive = user.getCompany() != null && "INACTIVE".equalsIgnoreCase(user.getCompany().getSubscriptionStatus());
+                boolean isUserExpired = user.getSubscriptionExpiryDate() == null || user.getSubscriptionExpiryDate().isBefore(LocalDateTime.now());
+                if (isCompanyInactive || isUserExpired) {
+                    return ResponseEntity.status(403).body("Subscription expired. Please renew your subscription to export data.");
+                }
             }
 
             // Fetch surveys
-            List<Survey> surveys = surveyRepo.findSurveysWithFilters(userId, stateId, districtId, blockId);
+            List<Survey> surveys;
+            if ("COMPANY_ADMIN".equals(user.getRole()) && user.getCompany() != null) {
+                surveys = surveyRepo.findCompanySurveysWithFilters(user.getCompany().getId(), stateId, districtId, blockId);
+            } else if ("SUPER_ADMIN".equals(user.getRole())) {
+                surveys = surveyRepo.findAll(); // Simplified for super admin
+            } else {
+                surveys = surveyRepo.findSurveysWithFilters(userId, stateId, districtId, blockId);
+            }
 
             // Generate Excel
             Workbook workbook = new XSSFWorkbook();

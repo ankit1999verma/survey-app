@@ -16,10 +16,21 @@ public class AdminController {
 
     @Autowired private SurveyRepository surveyRepo;
     @Autowired private UserRepository userRepo;
+    @Autowired private com.gpsurvey.backend.services.EmailService emailService;
 
     private User getAuthenticatedUser(String authHeader) {
         Long userId = Long.parseLong(authHeader.replace("Bearer dummy-jwt-token-", ""));
         return userRepo.findById(userId).orElseThrow();
+    }
+
+    private String generateRandomPassword(int length) {
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%";
+        StringBuilder sb = new StringBuilder();
+        java.util.Random rnd = new java.util.Random();
+        for (int i = 0; i < length; i++) {
+            sb.append(chars.charAt(rnd.nextInt(chars.length())));
+        }
+        return sb.toString();
     }
 
     @PostMapping("/invite-worker")
@@ -31,19 +42,24 @@ public class AdminController {
             }
             
             if(userRepo.findByUsername(request.getUsername()).isPresent()) {
-                return ResponseEntity.badRequest().body("Username already exists");
+                return ResponseEntity.badRequest().body("Email (Username) already exists");
             }
+            
+            String generatedPassword = generateRandomPassword(8);
             
             User worker = new User();
             worker.setUsername(request.getUsername());
-            worker.setPassword(request.getPassword()); // In real app: hash password
+            worker.setPassword(generatedPassword); // In real app: hash password
             worker.setName(request.getName());
             worker.setContactNo(request.getContactNo());
             worker.setRole("SURVEYOR");
             worker.setCompany(admin.getCompany());
             userRepo.save(worker);
             
-            return ResponseEntity.ok("Worker invited successfully");
+            String companyName = admin.getCompany() != null ? admin.getCompany().getName() : "Your Company";
+            emailService.sendWorkerInviteEmail(request.getUsername(), request.getName(), request.getUsername(), generatedPassword, companyName);
+            
+            return ResponseEntity.ok("Worker invited successfully and email sent.");
         } catch(Exception e) {
             return ResponseEntity.status(401).body("Unauthorized");
         }

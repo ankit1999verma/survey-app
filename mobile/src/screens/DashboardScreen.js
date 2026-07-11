@@ -428,6 +428,28 @@ const DashboardScreen = ({ navigation }) => {
           <Feather name="chevron-right" size={20} color={colors.outline} />
         </TouchableOpacity>
 
+        {userInfo?.role === 'COMPANY_ADMIN' && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Team Management</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => navigation.navigate('InviteWorker')}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.actionIconBox, { backgroundColor: '#E0F2FE' }]}>
+                <Feather name="user-plus" size={22} color="#0284C7" />
+              </View>
+              <View style={styles.actionTextContent}>
+                <Text style={styles.actionBtnLabel}>Invite Team Member</Text>
+                <Text style={styles.actionBtnSub}>Add a new surveyor to your company</Text>
+              </View>
+              <Feather name="chevron-right" size={20} color={colors.outline} />
+            </TouchableOpacity>
+          </>
+        )}
+
         <View style={{ height: spacing.xxl }} />
       </ScrollView>
 

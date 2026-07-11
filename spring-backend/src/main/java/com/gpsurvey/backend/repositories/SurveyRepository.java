@@ -23,6 +23,16 @@ public interface SurveyRepository extends JpaRepository<Survey, Long> {
             @org.springframework.data.repository.query.Param("districtId") Long districtId,
             @org.springframework.data.repository.query.Param("blockId") Long blockId);
 
+    @org.springframework.data.jpa.repository.Query("SELECT s FROM Survey s WHERE s.company.id = :companyId " +
+            "AND (:stateId IS NULL OR s.stateId = :stateId) " +
+            "AND (:districtId IS NULL OR s.districtId = :districtId) " +
+            "AND (:blockId IS NULL OR s.blockId = :blockId)")
+    List<Survey> findCompanySurveysWithFilters(
+            @org.springframework.data.repository.query.Param("companyId") Long companyId,
+            @org.springframework.data.repository.query.Param("stateId") Long stateId,
+            @org.springframework.data.repository.query.Param("districtId") Long districtId,
+            @org.springframework.data.repository.query.Param("blockId") Long blockId);
+
     // Mobile App Cursor Pagination (ID-based)
     Page<Survey> findByUserIdAndIdGreaterThanOrderByIdAsc(Long userId, Long id, Pageable pageable);
     long countByUserIdAndIdGreaterThan(Long userId, Long id);
